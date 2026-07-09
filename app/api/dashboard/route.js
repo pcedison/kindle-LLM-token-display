@@ -1,35 +1,9 @@
 import { ImageResponse } from 'next/og';
 import { getLayoutMetrics, resolveDashboardProfile } from './kindleProfiles.mjs';
+import { getProviderCards } from './providerData.mjs';
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
-
-const PROVIDERS = [
-  {
-    queryKey: 'claude',
-    defaultVisible: true,
-    name: 'Anthropic',
-    detail: 'Claude Code',
-    remaining: '$42.15',
-    reset: 'Reset 08/01',
-  },
-  {
-    queryKey: 'openai',
-    defaultVisible: true,
-    name: 'OpenAI',
-    detail: 'API Usage',
-    remaining: '78%',
-    reset: 'Reset 07/31',
-  },
-  {
-    queryKey: 'gemini',
-    defaultVisible: false,
-    name: 'Google',
-    detail: 'Gemini API',
-    remaining: '4.5k/5k',
-    reset: 'Window 24h',
-  },
-];
 
 function isVisible(searchParams, key, defaultVisible) {
   const value = searchParams.get(key);
@@ -122,7 +96,7 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const profile = resolveDashboardProfile(searchParams);
   const metrics = getLayoutMetrics(profile);
-  const visibleProviders = PROVIDERS.filter((provider) =>
+  const visibleProviders = getProviderCards().filter((provider) =>
     isVisible(searchParams, provider.queryKey, provider.defaultVisible),
   );
 

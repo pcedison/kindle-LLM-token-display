@@ -1,83 +1,135 @@
 # Kindle LLM Token Dashboard
 
-這個專案在 Vercel 上輸出 Kindle 友善的 PNG dashboard。Kindle 端建議只抓取
-`/api/dashboard` 的圖片，再用 `eips` 顯示；不要讓舊 Kindle 瀏覽器直接跑
-Next/React 頁面。
+This project renders a Kindle-friendly PNG dashboard on Vercel. The Kindle does
+not run the web app directly. It downloads `/api/dashboard` as a PNG and displays
+that file with `eips`.
 
-## Vercel URL
-
-部署到 Vercel production 後，Kindle 端使用固定 production domain：
+Production URL currently used by the Kindle:
 
 ```text
-https://YOUR-PROJECT.vercel.app/api/dashboard?profile=dp75sdi&claude=true&openai=true&gemini=false
+https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&claude=true&openai=true&gemini=false
 ```
 
-如果 Vercel 專案有綁定 GitHub，推送到 production branch（通常是 `main`）後，
-Vercel 會自動建立 production deployment。Kindle 下一次抓取同一個 URL 時，就會
-取得新的圖片。
+## What Is Already Set Up
 
-## Kindle Profiles
+- Vercel/Next endpoint outputs portrait PNGs for Kindle.
+- `profile=dp75sdi` outputs `758x1024`.
+- Kindle scripts live under `/mnt/us/extensions/kindle-dash`.
+- KUAL has Start, Refresh Now, and Stop/Restore actions.
+- Kindle refresh interval is controlled locally by `REFRESH_INTERVAL_SECS`.
 
-`profile` 會決定輸出圖片解析度與版面縮放：
+## Final Values To Fill In
 
-| Profile | Size | Use case |
-| --- | ---: | --- |
-| `dp75sdi` | `758x1024` | Kindle Paperwhite 2 / DP75SDI safe default |
-| `kpw3` | `1072x1448` | Kindle Paperwhite 3 |
-| `voyage` | `1080x1440` | Kindle Voyage |
-| `basic` | `600x800` | Kindle Basic |
+The dashboard now reads display values from Vercel Environment Variables. These
+are plain display labels. Do not put API keys in this repo.
 
-實機解析度不確定時，可以手動覆寫：
+Add these in Vercel Project Settings -> Environment Variables:
 
 ```text
-https://YOUR-PROJECT.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024
+CLAUDE_STATUS_VALUE
+CLAUDE_RESET_LABEL
+OPENAI_STATUS_VALUE
+OPENAI_RESET_LABEL
+GEMINI_STATUS_VALUE
+GEMINI_RESET_LABEL
 ```
 
-## Provider Toggles
-
-可用 query string 控制顯示項目：
+Example values:
 
 ```text
+CLAUDE_STATUS_VALUE=12%
+CLAUDE_RESET_LABEL=Reset 2026-08-01
+OPENAI_STATUS_VALUE=$18.42
+OPENAI_RESET_LABEL=Reset 2026-07-31
+GEMINI_STATUS_VALUE=4.5k / 5k
+GEMINI_RESET_LABEL=Window 24h
+```
+
+After changing Vercel env vars, redeploy the production deployment. The Kindle
+will pick up the new values on its next refresh.
+
+## URL Parameters
+
+```text
+profile=dp75sdi
 claude=true
 openai=true
 gemini=false
 ```
 
-## Kindle 端建議流程
+Supported profiles:
 
-抓圖後使用完整 refresh 顯示：
+| Profile | Size | Use case |
+| --- | ---: | --- |
+| `dp75sdi` | `758x1024` | Kindle DP75SDI / Paperwhite 2 safe portrait default |
+| `kpw3` | `1072x1448` | Kindle Paperwhite 3 |
+| `voyage` | `1080x1440` | Kindle Voyage |
+| `basic` | `600x800` | Kindle Basic |
 
-```sh
-/usr/sbin/eips -f -g /mnt/us/dashboard/dash.png
+If the real device needs a custom size, add `w` and `h`:
+
+```text
+https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=600&h=800
 ```
 
-若 dashboard 腳本會停止 Kindle framework，請準備一個恢復腳本，避免只能長按電源
-重啟：
+## Kindle Local Files
 
-```sh
-#!/usr/bin/env sh
-pkill -f dash.sh
-lipc-set-prop com.lab126.powerd preventScreenSaver 0
-/etc/init.d/framework start
-initctl start webreader >/dev/null 2>&1
-/usr/sbin/eips -c
+When mounted on Windows:
+
+```text
+D:\extensions\kindle-dash
 ```
 
-## 實機尺寸排查
+On Kindle:
 
-用 SSH 進 Kindle 後可查：
-
-```sh
-eips -i
-for f in virtual_size modes bits_per_pixel stride; do
-  echo "$f=$(cat /sys/class/graphics/fb0/$f 2>/dev/null)"
-done
-free -m
+```text
+/mnt/us/extensions/kindle-dash
 ```
 
-不要公開 serial、token、cookie 或完整 Authorization header。
+Important files:
 
-## Local Commands
+```text
+local/env.sh              refresh interval and dashboard URL
+local/fetch-dashboard.sh  downloads the PNG from Vercel
+start.sh                  starts the long-running dashboard loop
+refresh-now.sh            refreshes once immediately
+stop.sh                   stops dashboard and restores Kindle UI
+logs/dash.log             runtime log
+```
+
+## Kindle Refresh Interval
+
+Edit `local/env.sh`:
+
+```sh
+export REFRESH_INTERVAL_SECS=${REFRESH_INTERVAL_SECS:-1800}
+```
+
+Common values:
+
+```text
+900   = 15 minutes
+1800  = 30 minutes
+3600  = 60 minutes
+```
+
+## Recovery
+
+If the Kindle appears stuck, first run this from KUAL:
+
+```text
+Stop Dashboard / Restore Kindle
+```
+
+Or by SSH:
+
+```sh
+/mnt/us/extensions/kindle-dash/stop.sh
+```
+
+Use a long power-button reboot only if KUAL and SSH are unavailable.
+
+## Local Development
 
 ```sh
 npm test

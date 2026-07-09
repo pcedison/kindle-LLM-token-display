@@ -9,6 +9,15 @@ const PROFILES = [
   { value: 'basic', label: 'Kindle Basic (600 x 800)' },
 ];
 
+const ENV_VARS = [
+  'CLAUDE_STATUS_VALUE',
+  'CLAUDE_RESET_LABEL',
+  'OPENAI_STATUS_VALUE',
+  'OPENAI_RESET_LABEL',
+  'GEMINI_STATUS_VALUE',
+  'GEMINI_RESET_LABEL',
+];
+
 export default function ConfigPage() {
   const [profile, setProfile] = useState('dp75sdi');
   const [showClaude, setShowClaude] = useState(true);
@@ -235,6 +244,46 @@ export default function ConfigPage() {
           >
             {kindleUrl}
           </code>
+        </div>
+
+        <div
+          className="config-card"
+          style={{
+            border: '1px solid #d9d9d0',
+            background: '#fff',
+            padding: '22px',
+            borderRadius: '8px',
+            boxSizing: 'border-box',
+            minWidth: 0,
+            width: '100%',
+          }}
+        >
+          <h2 style={{ margin: 0, fontSize: '18px' }}>Vercel env to fill</h2>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+              gap: '8px',
+              marginTop: '12px',
+            }}
+          >
+            {ENV_VARS.map((name) => (
+              <code
+                key={name}
+                style={{
+                  display: 'block',
+                  padding: '10px',
+                  background: '#f2f2ed',
+                  border: '1px solid #deded6',
+                  borderRadius: '6px',
+                  color: '#333',
+                  wordBreak: 'break-all',
+                }}
+              >
+                {name}
+              </code>
+            ))}
+          </div>
         </div>
       </section>
     </main>
