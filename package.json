@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "next": "16.2.10",
+    "pako": "^3.0.1",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "upng-js": "^2.1.0"
   }
 }

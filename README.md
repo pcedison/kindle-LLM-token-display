@@ -13,6 +13,8 @@ https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&
 ## What Is Already Set Up
 
 - Vercel/Next endpoint outputs portrait PNGs for Kindle.
+- Dashboard PNGs are flattened to opaque 8-bit grayscale before delivery so
+  older Kindle `eips` builds do not misread RGBA/alpha PNG data.
 - `profile=dp75sdi` outputs `758x1024` for the mounted DP75SDI device.
 - Kindle scripts live under `/mnt/us/extensions/kindle-dash`.
 - KUAL has Start, Refresh Now, and Stop/Restore actions.

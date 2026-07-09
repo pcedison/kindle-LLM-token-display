@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og';
 import { getLayoutMetrics, resolveDashboardProfile } from './kindleProfiles.mjs';
+import { makeOpaqueGrayscalePng } from './kindlePng.mjs';
 import { getProviderCards } from './providerData.mjs';
 
 export const runtime = 'edge';
@@ -295,7 +296,7 @@ export async function GET(request) {
   const cardHeight = cards.length > 2 ? 250 : profile.height <= 800 ? 300 : 420;
   const pikachuSrc = new URL('/pikachu-line.png', request.url).toString();
 
-  return new ImageResponse(
+  const imageResponse = new ImageResponse(
     (
       <div
         style={{
@@ -366,9 +367,16 @@ export async function GET(request) {
     {
       width: profile.width,
       height: profile.height,
-      headers: {
-        'Cache-Control': 'no-store, max-age=0, must-revalidate',
-      },
     },
   );
+
+  const imageBytes = new Uint8Array(await imageResponse.arrayBuffer());
+  const kindlePng = makeOpaqueGrayscalePng(imageBytes);
+
+  return new Response(kindlePng, {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'no-store, max-age=0, must-revalidate',
+    },
+  });
 }
