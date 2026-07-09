@@ -4,9 +4,9 @@ const MAX_DIMENSION = 2000;
 export const KINDLE_PROFILES = {
   dp75sdi: {
     key: 'dp75sdi',
-    label: 'DP75SDI / 600x800',
-    width: 600,
-    height: 800,
+    label: 'DP75SDI / PW2',
+    width: 758,
+    height: 1024,
   },
   kpw3: {
     key: 'kpw3',

@@ -7,13 +7,13 @@ that file with `eips`.
 Production URL currently used by the Kindle:
 
 ```text
-https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=600&h=800&claude=true&openai=true&gemini=false
+https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&claude=true&openai=true&gemini=false
 ```
 
 ## What Is Already Set Up
 
 - Vercel/Next endpoint outputs portrait PNGs for Kindle.
-- `profile=dp75sdi` outputs `600x800` for the mounted DP75SDI device.
+- `profile=dp75sdi` outputs `758x1024` for the mounted DP75SDI device.
 - Kindle scripts live under `/mnt/us/extensions/kindle-dash`.
 - KUAL has Start, Refresh Now, and Stop/Restore actions.
 - Kindle refresh interval is controlled locally by `REFRESH_INTERVAL_SECS`.
@@ -63,8 +63,8 @@ refresh.
 
 ```text
 profile=dp75sdi
-w=600
-h=800
+w=758
+h=1024
 claude=true
 openai=true
 gemini=false
@@ -74,7 +74,7 @@ Supported profiles:
 
 | Profile | Size | Use case |
 | --- | ---: | --- |
-| `dp75sdi` | `600x800` | Kindle DP75SDI safe portrait default for this install |
+| `dp75sdi` | `758x1024` | Kindle DP75SDI / Paperwhite 2 safe portrait default |
 | `kpw3` | `1072x1448` | Kindle Paperwhite 3 |
 | `voyage` | `1080x1440` | Kindle Voyage |
 | `basic` | `600x800` | Kindle Basic |
@@ -82,7 +82,7 @@ Supported profiles:
 If the real device needs a custom size, add `w` and `h`:
 
 ```text
-https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=kpw3&w=758&h=1024
+https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=600&h=800
 ```
 
 ## Kindle Local Files
