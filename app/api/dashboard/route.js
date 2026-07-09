@@ -105,9 +105,9 @@ function renderProgressBar(provider, cardHeight) {
   );
 }
 
-function renderProviderCard(provider, metrics, cardHeight, index) {
-  const valueFont = cardHeight > 210 ? metrics.valueFont + 4 : metrics.valueFont - 8;
-  const titleFont = cardHeight > 210 ? metrics.cardTitleFont + 2 : metrics.cardTitleFont;
+function renderProviderCard(provider, metrics, cardHeight, index, totalCards) {
+  const valueFont = cardHeight > 300 ? metrics.valueFont + 14 : metrics.valueFont + 2;
+  const titleFont = cardHeight > 300 ? metrics.cardTitleFont + 6 : metrics.cardTitleFont + 2;
 
   return (
     <div
@@ -118,8 +118,8 @@ function renderProviderCard(provider, metrics, cardHeight, index) {
         height: `${cardHeight}px`,
         border: `${metrics.border + 1}px solid #111`,
         boxSizing: 'border-box',
-        padding: `${Math.round(metrics.cardPadding * 0.82)}px`,
-        marginBottom: `${Math.round(metrics.cardGap * 0.68)}px`,
+        padding: `${Math.round(metrics.cardPadding * 1.05)}px`,
+        marginBottom: index === totalCards - 1 ? '0' : `${Math.round(metrics.cardGap * 0.72)}px`,
         width: '100%',
         backgroundColor: '#fff',
       }}
@@ -180,7 +180,7 @@ function renderProviderCard(provider, metrics, cardHeight, index) {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'flex-end',
-          marginTop: cardHeight > 210 ? '12px' : '8px',
+          marginTop: cardHeight > 300 ? '24px' : '12px',
           width: '100%',
         }}
       >
@@ -207,44 +207,79 @@ function renderProviderCard(provider, metrics, cardHeight, index) {
         </span>
       </div>
       {renderProgressBar(provider, cardHeight)}
-    </div>
-  );
-}
-
-function renderStatusCell(label, value, width) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width,
-        border: '3px solid #111',
-        padding: '12px',
-        boxSizing: 'border-box',
-        backgroundColor: '#fff',
-      }}
-    >
-      <span
+      <div
         style={{
-          fontSize: 13,
-          fontWeight: 800,
-          color: '#333',
-          lineHeight: 1,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'stretch',
+          width: '100%',
+          marginTop: 'auto',
+          paddingTop: cardHeight > 300 ? '24px' : '12px',
         }}
       >
-        {label}
-      </span>
-      <span
-        style={{
-          fontSize: 25,
-          fontWeight: 900,
-          color: '#111',
-          lineHeight: 1.1,
-          marginTop: '8px',
-        }}
-      >
-        {value}
-      </span>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            width: '48%',
+            borderTop: '3px solid #111',
+            paddingTop: '10px',
+          }}
+        >
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 900,
+              color: '#333',
+              lineHeight: 1,
+            }}
+          >
+            RESET TIME
+          </span>
+          <span
+            style={{
+              fontSize: 22,
+              fontWeight: 900,
+              color: '#111',
+              lineHeight: 1.1,
+              marginTop: '8px',
+            }}
+          >
+            {provider.reset}
+          </span>
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            width: '48%',
+            borderTop: '3px solid #111',
+            paddingTop: '10px',
+          }}
+        >
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 900,
+              color: '#333',
+              lineHeight: 1,
+            }}
+          >
+            DISPLAY VALUE
+          </span>
+          <span
+            style={{
+              fontSize: 22,
+              fontWeight: 900,
+              color: '#111',
+              lineHeight: 1.1,
+              marginTop: '8px',
+            }}
+          >
+            {provider.remaining}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -311,8 +346,7 @@ export async function GET(request) {
             reset: 'Update URL query',
           },
         ];
-  const cardHeight = cards.length > 2 ? 184 : 242;
-  const visibleCount = visibleProviders.length;
+  const cardHeight = cards.length > 2 ? 250 : 410;
 
   return new ImageResponse(
     (
@@ -376,7 +410,7 @@ export async function GET(request) {
                 marginTop: '8px',
               }}
             >
-              Pull-only dashboard / refresh every 12 min
+              Usage limits and reset windows
             </span>
           </div>
           <div
@@ -402,17 +436,6 @@ export async function GET(request) {
               >
                 {todayLabel()}
               </span>
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  color: '#333',
-                  lineHeight: 1,
-                  marginTop: '9px',
-                }}
-              >
-                {profile.width}x{profile.height}
-              </span>
             </div>
             {renderAbstractMark()}
           </div>
@@ -425,46 +448,7 @@ export async function GET(request) {
             width: '100%',
           }}
         >
-          {cards.map((provider, index) => renderProviderCard(provider, metrics, cardHeight, index))}
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            marginTop: 'auto',
-            width: '100%',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              width: '100%',
-              marginBottom: '16px',
-            }}
-          >
-            {renderStatusCell('REFRESH', '12 MIN', '31%')}
-            {renderStatusCell('VISIBLE', `${visibleCount}/${getProviderCards().length}`, '31%')}
-            {renderStatusCell('PROFILE', profile.key.toUpperCase(), '31%')}
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              borderTop: `${metrics.border}px solid #111`,
-              paddingTop: '11px',
-              width: '100%',
-              color: '#333',
-              fontSize: metrics.footerFont,
-              fontWeight: 700,
-              lineHeight: 1,
-            }}
-          >
-            <span>{profile.label}</span>
-            <span>Vercel / GitHub synced</span>
-          </div>
+          {cards.map((provider, index) => renderProviderCard(provider, metrics, cardHeight, index, cards.length))}
         </div>
       </div>
     ),
