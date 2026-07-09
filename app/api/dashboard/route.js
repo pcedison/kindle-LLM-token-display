@@ -1,76 +1,228 @@
 import { ImageResponse } from 'next/og';
+import { getLayoutMetrics, resolveDashboardProfile } from './kindleProfiles.mjs';
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
+const PROVIDERS = [
+  {
+    queryKey: 'claude',
+    defaultVisible: true,
+    name: 'Anthropic',
+    detail: 'Claude Code',
+    remaining: '$42.15',
+    reset: 'Reset 08/01',
+  },
+  {
+    queryKey: 'openai',
+    defaultVisible: true,
+    name: 'OpenAI',
+    detail: 'API Usage',
+    remaining: '78%',
+    reset: 'Reset 07/31',
+  },
+  {
+    queryKey: 'gemini',
+    defaultVisible: false,
+    name: 'Google',
+    detail: 'Gemini API',
+    remaining: '4.5k/5k',
+    reset: 'Window 24h',
+  },
+];
+
+function isVisible(searchParams, key, defaultVisible) {
+  const value = searchParams.get(key);
+  if (value === null) {
+    return defaultVisible;
+  }
+
+  return value !== 'false' && value !== '0' && value !== 'off';
+}
+
+function todayLabel() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function renderProviderCard(provider, metrics) {
+  return (
+    <div
+      key={provider.queryKey}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        border: `${metrics.border}px solid #000`,
+        boxSizing: 'border-box',
+        padding: `${metrics.cardPadding}px`,
+        marginBottom: `${metrics.cardGap}px`,
+        width: '100%',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          width: '100%',
+        }}
+      >
+        <span
+          style={{
+            fontSize: metrics.cardTitleFont,
+            fontWeight: 800,
+            lineHeight: 1.1,
+          }}
+        >
+          {provider.name}
+        </span>
+        <span
+          style={{
+            fontSize: metrics.resetFont,
+            color: '#333',
+            lineHeight: 1.1,
+          }}
+        >
+          {provider.detail}
+        </span>
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-end',
+          marginTop: `${Math.round(metrics.cardPadding * 0.5)}px`,
+          width: '100%',
+        }}
+      >
+        <span
+          style={{
+            fontSize: metrics.valueFont,
+            fontWeight: 900,
+            lineHeight: 0.95,
+          }}
+        >
+          {provider.remaining}
+        </span>
+        <span
+          style={{
+            fontSize: metrics.resetFont,
+            color: '#333',
+            lineHeight: 1.1,
+            paddingBottom: `${Math.round(metrics.valueFont * 0.08)}px`,
+          }}
+        >
+          {provider.reset}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  
-  const showClaude = searchParams.get('claude') !== 'false';
-  const showOpenAI = searchParams.get('openai') !== 'false';
-  const showGemini = searchParams.get('gemini') === 'true';
+  const profile = resolveDashboardProfile(searchParams);
+  const metrics = getLayoutMetrics(profile);
+  const visibleProviders = PROVIDERS.filter((provider) =>
+    isVisible(searchParams, provider.queryKey, provider.defaultVisible),
+  );
 
-  // 模擬數據 (等一下畫面正常後，我們就來把這裡換成真實 API)
-  let claudeUsage = { remaining: "$42.15", reset: "08/01" };
-  let openAIUsage = { remaining: "78%", reset: "07/31" };
-  let geminiUsage = { remaining: "4.5k/5k", reset: "24h" };
+  const cards =
+    visibleProviders.length > 0
+      ? visibleProviders
+      : [
+          {
+            queryKey: 'empty',
+            name: 'No providers',
+            detail: 'Hidden',
+            remaining: '--',
+            reset: 'Update URL query',
+          },
+        ];
 
   return new ImageResponse(
     (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: '758px',        // 縮小到 KPW3 完美的相容寬度
-        height: '1024px',      // 縮小到 KPW3 完美的相容高度
-        backgroundColor: '#FFFFFF',
-        color: '#000000',
-        fontFamily: 'sans-serif',
-        padding: '45px',       // 舒適的內邊距
-      }}>
-        {/* 頂部標題區 */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '6px solid #000000', paddingBottom: '15px', marginBottom: '40px' }}>
-          <span style={{ fontSize: '36px', fontWeight: 'bold', letterSpacing: '1px' }}>LLM TOKEN MONITOR</span>
-          <span style={{ fontSize: '22px', fontWeight: 'bold' }}>{new Date().toLocaleDateString('zh-TW')}</span>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          width: '100%',
+          height: '100%',
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+          backgroundColor: '#fff',
+          color: '#000',
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          padding: `${metrics.padding}px`,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-end',
+            borderBottom: `${metrics.border * 2}px solid #000`,
+            paddingBottom: `${Math.round(metrics.padding * 0.35)}px`,
+            marginBottom: `${metrics.cardGap}px`,
+            width: '100%',
+          }}
+        >
+          <span
+            style={{
+              fontSize: metrics.headerFont,
+              fontWeight: 900,
+              lineHeight: 1,
+            }}
+          >
+            TOKEN STATUS
+          </span>
+          <span
+            style={{
+              fontSize: metrics.metaFont,
+              fontWeight: 700,
+              lineHeight: 1,
+            }}
+          >
+            {todayLabel()}
+          </span>
         </div>
 
-        {/* 區塊：Claude */}
-        {showClaude && (
-          <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '30px', border: '4px solid #000000', padding: '25px', borderRadius: '12px' }}>
-            <span style={{ fontSize: '24px', fontWeight: 'bold' }}>🤖 Anthropic - Claude Code</span>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '10px' }}>
-              <span style={{ fontSize: '60px', fontWeight: 'bold', lineHeight: '1' }}>{claudeUsage.remaining}</span>
-              <span style={{ fontSize: '18px', color: '#555' }}>重置日: {claudeUsage.reset}</span>
-            </div>
-          </div>
-        )}
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            width: '100%',
+          }}
+        >
+          {cards.map((provider) => renderProviderCard(provider, metrics))}
+        </div>
 
-        {/* 區塊：OpenAI */}
-        {showOpenAI && (
-          <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '30px', border: '4px solid #000000', padding: '25px', borderRadius: '12px' }}>
-            <span style={{ fontSize: '24px', fontWeight: 'bold' }}>🧠 OpenAI - API Usage</span>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '10px' }}>
-              <span style={{ fontSize: '60px', fontWeight: 'bold', lineHeight: '1' }}>{openAIUsage.remaining}</span>
-              <span style={{ fontSize: '18px', color: '#555' }}>重置日: {openAIUsage.reset}</span>
-            </div>
-          </div>
-        )}
-
-        {/* 區塊：Gemini */}
-        {showGemini && (
-          <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '30px', border: '4px solid #000000', padding: '25px', borderRadius: '12px' }}>
-            <span style={{ fontSize: '24px', fontWeight: 'bold' }}>✨ Google - Gemini API</span>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '10px' }}>
-              <span style={{ fontSize: '60px', fontWeight: 'bold', lineHeight: '1' }}>{geminiUsage.remaining}</span>
-              <span style={{ fontSize: '18px', color: '#555' }}>週期: {geminiUsage.reset}</span>
-            </div>
-          </div>
-        )}
-        
-        {/* 底部提示欄 */}
-        <div style={{ marginTop: 'auto', textAlign: 'center', fontSize: '18px', color: '#666' }}>
-          ⚡ Kindle Dash System • Auto-Refresh Mode Active
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: 'auto',
+            borderTop: `${metrics.border}px solid #000`,
+            paddingTop: `${Math.round(metrics.padding * 0.35)}px`,
+            width: '100%',
+            color: '#333',
+            fontSize: metrics.footerFont,
+            lineHeight: 1,
+          }}
+        >
+          <span>{profile.label}</span>
+          <span>
+            {profile.width}x{profile.height}
+          </span>
         </div>
       </div>
     ),
-    { width: 758, height: 1024 } // 強制 Vercel 輸出 758x1024 格式
+    {
+      width: profile.width,
+      height: profile.height,
+      headers: {
+        'Cache-Control': 'no-store, max-age=0, must-revalidate',
+      },
+    },
   );
 }

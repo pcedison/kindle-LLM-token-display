@@ -1,0 +1,33 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+@media (max-width: 520px) {
+  .config-main {
+    padding: 32px 14px !important;
+  }
+
+  .config-section {
+    margin: 0 !important;
+    max-width: 350px !important;
+  }
+
+  .config-title {
+    font-size: 30px !important;
+  }
+
+  .config-card {
+    padding: 16px !important;
+  }
+
+  .dimension-grid,
+  .provider-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
