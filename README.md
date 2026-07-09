@@ -102,13 +102,14 @@ logs/dash.log             runtime log
 Edit `local/env.sh`:
 
 ```sh
-export REFRESH_INTERVAL_SECS=${REFRESH_INTERVAL_SECS:-1800}
+export REFRESH_INTERVAL_SECS=${REFRESH_INTERVAL_SECS:-720}
 ```
 
 Common values:
 
 ```text
 900   = 15 minutes
+720   = 12 minutes
 1800  = 30 minutes
 3600  = 60 minutes
 ```
