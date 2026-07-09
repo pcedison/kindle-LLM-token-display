@@ -43,7 +43,8 @@ function renderProgressTicks() {
 }
 
 function renderProgressBar(provider, cardHeight) {
-  const barHeight = cardHeight > 210 ? 22 : 17;
+  const isTall = cardHeight > 300;
+  const barHeight = isTall ? 32 : 22;
   const fillWidth = `${Math.max(provider.progress, provider.progress === 0 ? 2 : provider.progress)}%`;
 
   return (
@@ -52,22 +53,39 @@ function renderProgressBar(provider, cardHeight) {
         display: 'flex',
         flexDirection: 'column',
         width: '100%',
-        marginTop: cardHeight > 210 ? '16px' : '10px',
+        marginTop: isTall ? '22px' : '12px',
       }}
     >
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
+          alignItems: 'flex-end',
           color: '#333',
-          fontSize: cardHeight > 210 ? 16 : 14,
           fontWeight: 700,
           lineHeight: 1,
-          marginBottom: '7px',
+          marginBottom: isTall ? '10px' : '7px',
         }}
       >
-        <span>USAGE METER</span>
-        <span>{provider.progress}%</span>
+        <span
+          style={{
+            fontSize: isTall ? 17 : 14,
+            fontWeight: 900,
+            letterSpacing: 0,
+          }}
+        >
+          REMAINING LIMIT
+        </span>
+        <span
+          style={{
+            fontSize: isTall ? 34 : 24,
+            fontWeight: 900,
+            color: '#111',
+            letterSpacing: 0,
+          }}
+        >
+          {provider.remaining}
+        </span>
       </div>
       <div
         style={{
@@ -75,7 +93,7 @@ function renderProgressBar(provider, cardHeight) {
           alignItems: 'stretch',
           width: '100%',
           height: `${barHeight}px`,
-          border: '3px solid #111',
+          border: isTall ? '4px solid #111' : '3px solid #111',
           boxSizing: 'border-box',
           backgroundColor: '#f7f7f2',
         }}
@@ -96,7 +114,7 @@ function renderProgressBar(provider, cardHeight) {
           justifyContent: 'space-between',
           alignItems: 'flex-start',
           width: '100%',
-          marginTop: '4px',
+          marginTop: '5px',
         }}
       >
         {renderProgressTicks()}
@@ -105,9 +123,72 @@ function renderProgressBar(provider, cardHeight) {
   );
 }
 
+function renderTokenBuddy(index) {
+  const mouthPath = index % 2 === 0 ? 'M35 43 C40 48 48 48 53 43' : 'M35 44 H53';
+
+  return (
+    <svg width="82" height="68" viewBox="0 0 82 68" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M17 21 C17 12 25 7 41 7 C57 7 65 12 65 21 V46 C65 57 56 62 41 62 C26 62 17 57 17 46 Z" stroke="#111" strokeWidth="4" />
+      <path d="M31 7 L27 0" stroke="#111" strokeWidth="4" strokeLinecap="round" />
+      <path d="M51 7 L55 0" stroke="#111" strokeWidth="4" strokeLinecap="round" />
+      <circle cx="32" cy="31" r="4" fill="#111" />
+      <circle cx="50" cy="31" r="4" fill="#111" />
+      <path d={mouthPath} stroke="#111" strokeWidth="4" strokeLinecap="round" />
+      <path d="M8 38 H17" stroke="#111" strokeWidth="4" strokeLinecap="round" />
+      <path d="M65 38 H74" stroke="#111" strokeWidth="4" strokeLinecap="round" />
+      <path d="M24 58 L18 66" stroke="#111" strokeWidth="4" strokeLinecap="round" />
+      <path d="M58 58 L64 66" stroke="#111" strokeWidth="4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function renderMetricTile(label, value, isTall) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        width: '31%',
+        borderTop: '3px solid #111',
+        paddingTop: '10px',
+      }}
+    >
+      <span
+        style={{
+          fontSize: 13,
+          fontWeight: 900,
+          color: '#333',
+          lineHeight: 1,
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          fontSize: isTall ? 22 : 17,
+          fontWeight: 900,
+          color: '#111',
+          lineHeight: 1.1,
+          marginTop: '8px',
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 function renderProviderCard(provider, metrics, cardHeight, index, totalCards) {
-  const valueFont = cardHeight > 300 ? metrics.valueFont + 14 : metrics.valueFont + 2;
-  const titleFont = cardHeight > 300 ? metrics.cardTitleFont + 6 : metrics.cardTitleFont + 2;
+  const isTall = cardHeight > 300;
+  const title = provider.displayName || provider.name;
+  const titleFont = isTall
+    ? title.length > 14
+      ? metrics.valueFont - 7
+      : metrics.valueFont + 8
+    : title.length > 14
+      ? metrics.cardTitleFont + 8
+      : metrics.cardTitleFont + 14;
+  const fillAvailable = totalCards <= 2;
 
   return (
     <div
@@ -115,10 +196,13 @@ function renderProviderCard(provider, metrics, cardHeight, index, totalCards) {
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: `${cardHeight}px`,
+        height: fillAvailable ? 'auto' : `${cardHeight}px`,
+        flexGrow: fillAvailable ? 1 : 0,
+        flexShrink: fillAvailable ? 1 : 0,
+        flexBasis: fillAvailable ? 0 : `${cardHeight}px`,
         border: `${metrics.border + 1}px solid #111`,
         boxSizing: 'border-box',
-        padding: `${Math.round(metrics.cardPadding * 1.05)}px`,
+        padding: `${Math.round(metrics.cardPadding * 1.02)}px`,
         marginBottom: index === totalCards - 1 ? '0' : `${Math.round(metrics.cardGap * 0.72)}px`,
         width: '100%',
         backgroundColor: '#fff',
@@ -132,79 +216,52 @@ function renderProviderCard(provider, metrics, cardHeight, index, totalCards) {
           width: '100%',
         }}
       >
-        <div
+        <span
           style={{
-            display: 'flex',
-            flexDirection: 'column',
+            fontSize: 11,
+            color: '#444',
+            fontWeight: 800,
             lineHeight: 1,
           }}
         >
-          <span
-            style={{
-              fontSize: 11,
-              color: '#444',
-              fontWeight: 800,
-              lineHeight: 1,
-            }}
-          >
-            {String(index + 1).padStart(2, '0')} / {provider.queryKey.toUpperCase()}
-          </span>
-          <span
-            style={{
-              fontSize: titleFont,
-              fontWeight: 900,
-              lineHeight: 1.08,
-              marginTop: '5px',
-            }}
-          >
-            {provider.name}
-          </span>
-        </div>
+          {String(index + 1).padStart(2, '0')} / {provider.vendorLabel || provider.queryKey.toUpperCase()}
+        </span>
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             border: '2px solid #111',
-            padding: '5px 9px',
-            fontSize: metrics.resetFont - 2,
+            padding: '6px 10px',
+            fontSize: metrics.resetFont - 4,
             fontWeight: 800,
             color: '#111',
             lineHeight: 1,
           }}
         >
-          {provider.detail}
+          TOKEN QUOTA
         </div>
       </div>
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'flex-end',
-          marginTop: cardHeight > 300 ? '24px' : '12px',
+          alignItems: 'flex-start',
+          marginTop: isTall ? '14px' : '9px',
           width: '100%',
         }}
       >
         <span
           style={{
-            fontSize: valueFont,
+            fontSize: titleFont,
             fontWeight: 900,
-            lineHeight: 0.95,
+            lineHeight: 0.98,
             letterSpacing: 0,
+            maxWidth: '82%',
           }}
         >
-          {provider.remaining}
+          {title}
         </span>
-        <span
-          style={{
-            fontSize: metrics.resetFont - 1,
-            color: '#333',
-            lineHeight: 1.1,
-            paddingBottom: `${Math.round(valueFont * 0.08)}px`,
-            fontWeight: 700,
-          }}
-        >
-          {provider.reset}
-        </span>
+        {isTall ? renderTokenBuddy(index) : null}
       </div>
       {renderProgressBar(provider, cardHeight)}
       <div
@@ -214,113 +271,12 @@ function renderProviderCard(provider, metrics, cardHeight, index, totalCards) {
           alignItems: 'stretch',
           width: '100%',
           marginTop: 'auto',
-          paddingTop: cardHeight > 300 ? '24px' : '12px',
+          paddingTop: isTall ? '22px' : '12px',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            width: '48%',
-            borderTop: '3px solid #111',
-            paddingTop: '10px',
-          }}
-        >
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 900,
-              color: '#333',
-              lineHeight: 1,
-            }}
-          >
-            RESET TIME
-          </span>
-          <span
-            style={{
-              fontSize: 22,
-              fontWeight: 900,
-              color: '#111',
-              lineHeight: 1.1,
-              marginTop: '8px',
-            }}
-          >
-            {provider.reset}
-          </span>
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            width: '48%',
-            borderTop: '3px solid #111',
-            paddingTop: '10px',
-          }}
-        >
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 900,
-              color: '#333',
-              lineHeight: 1,
-            }}
-          >
-            DISPLAY VALUE
-          </span>
-          <span
-            style={{
-              fontSize: 22,
-              fontWeight: 900,
-              color: '#111',
-              lineHeight: 1.1,
-              marginTop: '8px',
-            }}
-          >
-            {provider.remaining}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function renderAbstractMark() {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: '118px',
-        height: '88px',
-        border: '3px solid #111',
-        padding: '10px',
-        boxSizing: 'border-box',
-        backgroundColor: '#fff',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          width: '100%',
-        }}
-      >
-        <div style={{ display: 'flex', width: '22px', height: '22px', border: '3px solid #111' }} />
-        <div style={{ display: 'flex', width: '52px', height: '8px', backgroundColor: '#111', marginTop: '7px' }} />
-      </div>
-      <div style={{ display: 'flex', width: '82px', height: '3px', backgroundColor: '#111', marginTop: '13px' }} />
-      <div style={{ display: 'flex', width: '58px', height: '3px', backgroundColor: '#777', marginTop: '8px' }} />
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          width: '74px',
-          marginTop: '12px',
-        }}
-      >
-        <div style={{ display: 'flex', width: '9px', height: '9px', backgroundColor: '#111' }} />
-        <div style={{ display: 'flex', width: '9px', height: '9px', backgroundColor: '#111' }} />
-        <div style={{ display: 'flex', width: '9px', height: '9px', backgroundColor: '#111' }} />
+        {renderMetricTile('REMAINING', provider.remaining, isTall)}
+        {renderMetricTile('RESET', provider.reset, isTall)}
+        {renderMetricTile('METER', `${provider.progress}%`, isTall)}
       </div>
     </div>
   );
@@ -340,13 +296,16 @@ export async function GET(request) {
       : [
           {
             queryKey: 'empty',
+            vendorLabel: 'EMPTY',
             name: 'No providers',
             detail: 'Hidden',
+            displayName: 'No Providers',
             remaining: '--',
             reset: 'Update URL query',
+            progress: 0,
           },
         ];
-  const cardHeight = cards.length > 2 ? 250 : 410;
+  const cardHeight = cards.length > 2 ? 250 : 420;
 
   return new ImageResponse(
     (
@@ -370,8 +329,8 @@ export async function GET(request) {
             justifyContent: 'space-between',
             alignItems: 'flex-start',
             borderBottom: `${metrics.border * 2 + 1}px solid #111`,
-            paddingBottom: '14px',
-            marginBottom: '18px',
+            paddingBottom: '11px',
+            marginBottom: '16px',
             width: '100%',
           }}
         >
@@ -389,7 +348,7 @@ export async function GET(request) {
                 lineHeight: 1,
               }}
             >
-              LLM TOKEN BOARD / PORTRAIT E-INK
+              LLM TOKEN BOARD
             </span>
             <span
               style={{
@@ -410,7 +369,7 @@ export async function GET(request) {
                 marginTop: '8px',
               }}
             >
-              Usage limits and reset windows
+              Remaining quota and reset windows
             </span>
           </div>
           <div
@@ -424,9 +383,19 @@ export async function GET(request) {
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'flex-end',
-                marginRight: '14px',
               }}
             >
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 900,
+                  color: '#333',
+                  lineHeight: 1,
+                  marginBottom: '7px',
+                }}
+              >
+                UPDATED
+              </span>
               <span
                 style={{
                   fontSize: metrics.metaFont,
@@ -437,7 +406,6 @@ export async function GET(request) {
                 {todayLabel()}
               </span>
             </div>
-            {renderAbstractMark()}
           </div>
         </div>
 
@@ -446,6 +414,8 @@ export async function GET(request) {
             display: 'flex',
             flexDirection: 'column',
             width: '100%',
+            flexGrow: 1,
+            minHeight: 0,
           }}
         >
           {cards.map((provider, index) => renderProviderCard(provider, metrics, cardHeight, index, cards.length))}

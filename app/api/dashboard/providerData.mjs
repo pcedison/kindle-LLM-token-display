@@ -3,7 +3,9 @@ const PROVIDER_CONFIG = [
     queryKey: 'claude',
     defaultVisible: true,
     name: 'Anthropic',
-    detail: 'Claude / Code',
+    detail: 'Claude Code',
+    displayName: 'Anthropic Claude Code',
+    vendorLabel: 'ANTHROPIC',
     statusEnv: 'CLAUDE_STATUS_VALUE',
     resetEnv: 'CLAUDE_RESET_LABEL',
     progressEnv: 'CLAUDE_PROGRESS_VALUE',
@@ -11,8 +13,10 @@ const PROVIDER_CONFIG = [
   {
     queryKey: 'openai',
     defaultVisible: true,
-    name: 'OpenAI',
-    detail: 'API / Codex',
+    name: 'Codex',
+    detail: 'OpenAI',
+    displayName: 'Codex',
+    vendorLabel: 'OPENAI',
     statusEnv: 'OPENAI_STATUS_VALUE',
     resetEnv: 'OPENAI_RESET_LABEL',
     progressEnv: 'OPENAI_PROGRESS_VALUE',
@@ -20,8 +24,10 @@ const PROVIDER_CONFIG = [
   {
     queryKey: 'gemini',
     defaultVisible: false,
-    name: 'Google',
-    detail: 'Gemini API',
+    name: 'Gemini',
+    detail: 'Google AI',
+    displayName: 'Gemini',
+    vendorLabel: 'GOOGLE',
     statusEnv: 'GEMINI_STATUS_VALUE',
     resetEnv: 'GEMINI_RESET_LABEL',
     progressEnv: 'GEMINI_PROGRESS_VALUE',
@@ -61,7 +67,8 @@ function parseProgress(value) {
 
 export function getProviderCards(env = process.env) {
   return PROVIDER_CONFIG.map((provider) => {
-    const remaining = readEnv(env, provider.statusEnv) || 'SETUP';
+    const configuredRemaining = readEnv(env, provider.statusEnv);
+    const remaining = configuredRemaining || '--';
     const explicitProgress = parseProgress(readEnv(env, provider.progressEnv));
     const inferredProgress = parseProgress(remaining);
 
@@ -70,9 +77,12 @@ export function getProviderCards(env = process.env) {
       defaultVisible: provider.defaultVisible,
       name: provider.name,
       detail: provider.detail,
+      displayName: provider.displayName,
+      vendorLabel: provider.vendorLabel,
       remaining,
-      reset: readEnv(env, provider.resetEnv) || `Set ${provider.resetEnv}`,
+      reset: readEnv(env, provider.resetEnv) || 'Pending',
       progress: clampProgress(explicitProgress ?? inferredProgress),
+      isConfigured: Boolean(configuredRemaining),
     };
   });
 }

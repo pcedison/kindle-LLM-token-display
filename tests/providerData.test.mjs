@@ -6,16 +6,20 @@ import {
   providerEnvTemplate,
 } from '../app/api/dashboard/providerData.mjs';
 
-test('provider cards show setup placeholders when no env values are configured', () => {
+test('provider cards show quiet placeholders when no env values are configured', () => {
   const cards = getProviderCards({});
 
   assert.equal(cards.length, 3);
   assert.equal(cards[0].queryKey, 'claude');
-  assert.equal(cards[0].remaining, 'SETUP');
-  assert.equal(cards[0].reset, 'Set CLAUDE_RESET_LABEL');
+  assert.equal(cards[0].displayName, 'Anthropic Claude Code');
+  assert.equal(cards[0].vendorLabel, 'ANTHROPIC');
+  assert.equal(cards[0].remaining, '--');
+  assert.equal(cards[0].reset, 'Pending');
   assert.equal(cards[0].progress, 0);
-  assert.equal(cards[1].remaining, 'SETUP');
-  assert.equal(cards[2].remaining, 'SETUP');
+  assert.equal(cards[0].isConfigured, false);
+  assert.equal(cards[1].displayName, 'Codex');
+  assert.equal(cards[1].remaining, '--');
+  assert.equal(cards[2].remaining, '--');
 });
 
 test('provider cards read display values from Vercel environment variables', () => {
@@ -32,6 +36,7 @@ test('provider cards read display values from Vercel environment variables', () 
   assert.equal(cards[0].remaining, '12%');
   assert.equal(cards[0].reset, 'Reset 2026-08-01');
   assert.equal(cards[0].progress, 12);
+  assert.equal(cards[0].isConfigured, true);
   assert.equal(cards[1].remaining, '$18.42');
   assert.equal(cards[1].reset, 'Reset 2026-07-31');
   assert.equal(cards[1].progress, 28);

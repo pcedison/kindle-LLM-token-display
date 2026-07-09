@@ -53,9 +53,11 @@ GEMINI_PROGRESS_VALUE=90
 
 `*_PROGRESS_VALUE` is optional. If the display value contains a percentage such
 as `96%`, the dashboard can infer the progress bar automatically. Use the
-progress variable when the display value is money or text. After changing Vercel
-env vars, redeploy the production deployment. The Kindle will pick up the new
-values on its next refresh.
+progress variable when the display value is money or text. When values are not
+configured yet, the dashboard keeps the provider names visible and shows quiet
+`--` / `Pending` placeholders. After changing Vercel env vars, redeploy the
+production deployment. The Kindle will pick up the new values on its next
+refresh.
 
 ## URL Parameters
 
