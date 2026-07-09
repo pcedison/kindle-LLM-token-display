@@ -123,24 +123,18 @@ function renderProgressBar(provider, cardHeight) {
   );
 }
 
-function renderPikachuMark() {
+function renderPikachuMark(src) {
   return (
-    <svg width="104" height="88" viewBox="0 0 104 88" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M36 30 L24 5 C22 1 17 3 18 8 L23 38" stroke="#111" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M68 30 L80 5 C82 1 87 3 86 8 L81 38" stroke="#111" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M20 7 L25 18" stroke="#111" strokeWidth="7" strokeLinecap="round" />
-      <path d="M84 7 L79 18" stroke="#111" strokeWidth="7" strokeLinecap="round" />
-      <path d="M23 47 C23 29 36 20 52 20 C68 20 81 29 81 47 C81 67 69 78 52 78 C35 78 23 67 23 47 Z" stroke="#111" strokeWidth="4" />
-      <path d="M12 57 L4 57 L13 45 L7 45 L19 30" stroke="#111" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="40" cy="45" r="4" fill="#111" />
-      <circle cx="64" cy="45" r="4" fill="#111" />
-      <circle cx="31" cy="56" r="6" stroke="#111" strokeWidth="3" />
-      <circle cx="73" cy="56" r="6" stroke="#111" strokeWidth="3" />
-      <path d="M51 51 L48 55 L52 56 L56 55 L53 51" fill="#111" />
-      <path d="M42 61 C47 67 57 67 62 61" stroke="#111" strokeWidth="4" strokeLinecap="round" />
-      <path d="M37 78 L31 86" stroke="#111" strokeWidth="4" strokeLinecap="round" />
-      <path d="M67 78 L73 86" stroke="#111" strokeWidth="4" strokeLinecap="round" />
-    </svg>
+    <img
+      src={src}
+      width={145}
+      height={134}
+      style={{
+        display: 'flex',
+        objectFit: 'contain',
+      }}
+      alt=""
+    />
   );
 }
 
@@ -180,7 +174,7 @@ function renderMetricTile(label, value, isTall) {
   );
 }
 
-function renderProviderCard(provider, metrics, cardHeight, index, totalCards) {
+function renderProviderCard(provider, metrics, cardHeight, index, totalCards, pikachuSrc) {
   const isTall = cardHeight > 300;
   const title = provider.displayName || provider.name;
   const titleFont = isTall
@@ -249,7 +243,7 @@ function renderProviderCard(provider, metrics, cardHeight, index, totalCards) {
         >
           {title}
         </span>
-        {isTall ? renderPikachuMark() : null}
+        {isTall ? renderPikachuMark(pikachuSrc) : null}
       </div>
       {renderProgressBar(provider, cardHeight)}
       <div
@@ -294,6 +288,7 @@ export async function GET(request) {
           },
         ];
   const cardHeight = cards.length > 2 ? 250 : 420;
+  const pikachuSrc = new URL('/pikachu-line.png', request.url).toString();
 
   return new ImageResponse(
     (
@@ -357,7 +352,9 @@ export async function GET(request) {
             minHeight: 0,
           }}
         >
-          {cards.map((provider, index) => renderProviderCard(provider, metrics, cardHeight, index, cards.length))}
+          {cards.map((provider, index) =>
+            renderProviderCard(provider, metrics, cardHeight, index, cards.length, pikachuSrc),
+          )}
         </div>
       </div>
     ),
