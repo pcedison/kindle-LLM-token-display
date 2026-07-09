@@ -326,52 +326,14 @@ export async function GET(request) {
         <div
           style={{
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
+            justifyContent: 'flex-end',
+            alignItems: 'flex-end',
             borderBottom: `${metrics.border * 2 + 1}px solid #111`,
-            paddingBottom: '11px',
+            paddingBottom: '8px',
             marginBottom: '16px',
             width: '100%',
           }}
         >
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <span
-              style={{
-                fontSize: 13,
-                fontWeight: 900,
-                color: '#333',
-                lineHeight: 1,
-              }}
-            >
-              LLM TOKEN BOARD
-            </span>
-            <span
-              style={{
-                fontSize: metrics.headerFont + 4,
-                fontWeight: 900,
-                lineHeight: 1,
-                marginTop: '8px',
-              }}
-            >
-              TOKEN STATUS
-            </span>
-            <span
-              style={{
-                fontSize: 15,
-                fontWeight: 700,
-                color: '#333',
-                lineHeight: 1,
-                marginTop: '8px',
-              }}
-            >
-              Remaining quota and reset windows
-            </span>
-          </div>
           <div
             style={{
               display: 'flex',
@@ -387,18 +349,7 @@ export async function GET(request) {
             >
               <span
                 style={{
-                  fontSize: 11,
-                  fontWeight: 900,
-                  color: '#333',
-                  lineHeight: 1,
-                  marginBottom: '7px',
-                }}
-              >
-                UPDATED
-              </span>
-              <span
-                style={{
-                  fontSize: metrics.metaFont,
+                  fontSize: 18,
                   fontWeight: 900,
                   lineHeight: 1,
                 }}
