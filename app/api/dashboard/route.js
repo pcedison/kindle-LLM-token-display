@@ -123,21 +123,23 @@ function renderProgressBar(provider, cardHeight) {
   );
 }
 
-function renderTokenBuddy(index) {
-  const mouthPath = index % 2 === 0 ? 'M35 43 C40 48 48 48 53 43' : 'M35 44 H53';
-
+function renderPikachuMark() {
   return (
-    <svg width="82" height="68" viewBox="0 0 82 68" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M17 21 C17 12 25 7 41 7 C57 7 65 12 65 21 V46 C65 57 56 62 41 62 C26 62 17 57 17 46 Z" stroke="#111" strokeWidth="4" />
-      <path d="M31 7 L27 0" stroke="#111" strokeWidth="4" strokeLinecap="round" />
-      <path d="M51 7 L55 0" stroke="#111" strokeWidth="4" strokeLinecap="round" />
-      <circle cx="32" cy="31" r="4" fill="#111" />
-      <circle cx="50" cy="31" r="4" fill="#111" />
-      <path d={mouthPath} stroke="#111" strokeWidth="4" strokeLinecap="round" />
-      <path d="M8 38 H17" stroke="#111" strokeWidth="4" strokeLinecap="round" />
-      <path d="M65 38 H74" stroke="#111" strokeWidth="4" strokeLinecap="round" />
-      <path d="M24 58 L18 66" stroke="#111" strokeWidth="4" strokeLinecap="round" />
-      <path d="M58 58 L64 66" stroke="#111" strokeWidth="4" strokeLinecap="round" />
+    <svg width="104" height="88" viewBox="0 0 104 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M36 30 L24 5 C22 1 17 3 18 8 L23 38" stroke="#111" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M68 30 L80 5 C82 1 87 3 86 8 L81 38" stroke="#111" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 7 L25 18" stroke="#111" strokeWidth="7" strokeLinecap="round" />
+      <path d="M84 7 L79 18" stroke="#111" strokeWidth="7" strokeLinecap="round" />
+      <path d="M23 47 C23 29 36 20 52 20 C68 20 81 29 81 47 C81 67 69 78 52 78 C35 78 23 67 23 47 Z" stroke="#111" strokeWidth="4" />
+      <path d="M12 57 L4 57 L13 45 L7 45 L19 30" stroke="#111" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="40" cy="45" r="4" fill="#111" />
+      <circle cx="64" cy="45" r="4" fill="#111" />
+      <circle cx="31" cy="56" r="6" stroke="#111" strokeWidth="3" />
+      <circle cx="73" cy="56" r="6" stroke="#111" strokeWidth="3" />
+      <path d="M51 51 L48 55 L52 56 L56 55 L53 51" fill="#111" />
+      <path d="M42 61 C47 67 57 67 62 61" stroke="#111" strokeWidth="4" strokeLinecap="round" />
+      <path d="M37 78 L31 86" stroke="#111" strokeWidth="4" strokeLinecap="round" />
+      <path d="M67 78 L73 86" stroke="#111" strokeWidth="4" strokeLinecap="round" />
     </svg>
   );
 }
@@ -226,20 +228,6 @@ function renderProviderCard(provider, metrics, cardHeight, index, totalCards) {
         >
           {String(index + 1).padStart(2, '0')} / {provider.vendorLabel || provider.queryKey.toUpperCase()}
         </span>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            border: '2px solid #111',
-            padding: '6px 10px',
-            fontSize: metrics.resetFont - 4,
-            fontWeight: 800,
-            color: '#111',
-            lineHeight: 1,
-          }}
-        >
-          TOKEN QUOTA
-        </div>
       </div>
       <div
         style={{
@@ -261,7 +249,7 @@ function renderProviderCard(provider, metrics, cardHeight, index, totalCards) {
         >
           {title}
         </span>
-        {isTall ? renderTokenBuddy(index) : null}
+        {isTall ? renderPikachuMark() : null}
       </div>
       {renderProgressBar(provider, cardHeight)}
       <div
