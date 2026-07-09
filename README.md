@@ -104,6 +104,7 @@ Important files:
 ```text
 local/env.sh              refresh interval and dashboard URL
 local/fetch-dashboard.sh  downloads the PNG from Vercel
+local/display-test-frame.sh draws a 758x1024 diagnostic PNG without clearing the screen
 start.sh                  starts the long-running dashboard loop
 refresh-now.sh            refreshes once immediately
 stop.sh                   stops dashboard and restores Kindle UI
@@ -134,6 +135,18 @@ If the Kindle appears stuck, first run this from KUAL:
 ```text
 Stop Dashboard / Restore Kindle
 ```
+
+For display debugging, run these KUAL items in this order:
+
+```text
+Display Test Frame
+Display Cached Dashboard
+Start LLM Token Dashboard
+```
+
+The current DP75SDI launcher does not stop the Kindle framework and does not
+clear the screen before drawing. Those two actions caused blank-screen failures
+on this device.
 
 Or by SSH:
 

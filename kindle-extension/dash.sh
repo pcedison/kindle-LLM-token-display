@@ -31,6 +31,11 @@ stop_kindle_ui_once() {
     return 0
   fi
 
+  if [ "$ALLOW_FRAMEWORK_STOP" != true ]; then
+    echo "STOP_KINDLE_UI ignored because ALLOW_FRAMEWORK_STOP is not true."
+    return 0
+  fi
+
   echo "Stopping Kindle UI framework."
   lipc-set-prop com.lab126.powerd preventScreenSaver 1 >/dev/null 2>&1 || true
   initctl stop webreader >/dev/null 2>&1 || true
@@ -49,6 +54,8 @@ show_dashboard_png() {
     if [ "$CLEAR_BEFORE_DISPLAY" = true ]; then
       /usr/sbin/eips -c
       sleep 1
+    else
+      echo "Clear skipped"
     fi
     /usr/sbin/eips -f -g "$DASH_PNG"
     echo "Full screen refresh exit $?"
