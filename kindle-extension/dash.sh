@@ -21,6 +21,7 @@ init() {
   echo "Refresh interval: ${REFRESH_INTERVAL_SECS}s."
   echo "Timezone: ${TIMEZONE:-not-set}."
 
+  sleep "${KUAL_SETTLE_DELAY_SECS:-3}"
   echo powersave >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true
   lipc-set-prop com.lab126.powerd preventScreenSaver 1 >/dev/null 2>&1 || true
 }
@@ -45,10 +46,16 @@ show_dashboard_png() {
 
   if [ "$mode" = full ]; then
     echo "Full screen refresh"
+    if [ "$CLEAR_BEFORE_DISPLAY" = true ]; then
+      /usr/sbin/eips -c
+      sleep 1
+    fi
     /usr/sbin/eips -f -g "$DASH_PNG"
+    echo "Full screen refresh exit $?"
   else
     echo "Partial screen refresh"
     /usr/sbin/eips -g "$DASH_PNG"
+    echo "Partial screen refresh exit $?"
   fi
 }
 

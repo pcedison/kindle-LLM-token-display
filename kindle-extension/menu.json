@@ -1,0 +1,9 @@
+{
+  "items": [
+    {"name": "Start LLM Token Dashboard", "action": "./start.sh"},
+    {"name": "Refresh Dashboard Now", "action": "./refresh-now.sh"},
+    {"name": "Display Cached Dashboard", "action": "./local/display-once.sh"},
+    {"name": "Stop Dashboard / Restore Kindle", "action": "./stop.sh"},
+    {"name": "Write Dashboard Status Log", "action": "./diagnose.sh"}
+  ]
+}
