@@ -123,12 +123,12 @@ function renderProgressBar(provider, cardHeight) {
   );
 }
 
-function renderPikachuMark(src) {
+function renderPikachuMark(src, isCompact) {
   return (
     <img
       src={src}
-      width={145}
-      height={134}
+      width={isCompact ? 112 : 145}
+      height={isCompact ? 103 : 134}
       style={{
         display: 'flex',
         objectFit: 'contain',
@@ -175,9 +175,14 @@ function renderMetricTile(label, value, isTall) {
 }
 
 function renderProviderCard(provider, metrics, cardHeight, index, totalCards, pikachuSrc) {
+  const isCompact = cardHeight <= 320;
   const isTall = cardHeight > 300;
   const title = provider.displayName || provider.name;
-  const titleFont = isTall
+  const titleFont = isCompact
+    ? title.length > 14
+      ? metrics.valueFont - 14
+      : metrics.valueFont - 2
+    : isTall
     ? title.length > 14
       ? metrics.valueFont - 7
       : metrics.valueFont + 8
@@ -243,7 +248,7 @@ function renderProviderCard(provider, metrics, cardHeight, index, totalCards, pi
         >
           {title}
         </span>
-        {isTall ? renderPikachuMark(pikachuSrc) : null}
+        {cardHeight >= 300 ? renderPikachuMark(pikachuSrc, isCompact) : null}
       </div>
       {renderProgressBar(provider, cardHeight)}
       <div
@@ -287,7 +292,7 @@ export async function GET(request) {
             progress: 0,
           },
         ];
-  const cardHeight = cards.length > 2 ? 250 : 420;
+  const cardHeight = cards.length > 2 ? 250 : profile.height <= 800 ? 300 : 420;
   const pikachuSrc = new URL('/pikachu-line.png', request.url).toString();
 
   return new ImageResponse(

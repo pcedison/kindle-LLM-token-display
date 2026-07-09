@@ -6,12 +6,12 @@ import {
   resolveDashboardProfile,
 } from '../app/api/dashboard/kindleProfiles.mjs';
 
-test('defaults to the DP75SDI/Paperwhite 2 safe portrait profile', () => {
+test('defaults to the DP75SDI safe 600x800 portrait profile', () => {
   const profile = resolveDashboardProfile(new URLSearchParams());
 
   assert.equal(profile.key, 'dp75sdi');
-  assert.equal(profile.width, 758);
-  assert.equal(profile.height, 1024);
+  assert.equal(profile.width, 600);
+  assert.equal(profile.height, 800);
   assert.equal(profile.isCustomSize, false);
 });
 
@@ -27,12 +27,12 @@ test('resolves Paperwhite 3 aliases to the high-resolution portrait profile', ()
 
 test('allows explicit width and height overrides for real-device probing', () => {
   const profile = resolveDashboardProfile(
-    new URLSearchParams({ profile: 'dp75sdi', w: '600', h: '800' }),
+    new URLSearchParams({ profile: 'dp75sdi', w: '758', h: '1024' }),
   );
 
   assert.equal(profile.key, 'dp75sdi');
-  assert.equal(profile.width, 600);
-  assert.equal(profile.height, 800);
+  assert.equal(profile.width, 758);
+  assert.equal(profile.height, 1024);
   assert.equal(profile.isCustomSize, true);
 });
 
@@ -41,14 +41,14 @@ test('ignores unsafe custom dimensions instead of emitting unusable images', () 
     new URLSearchParams({ width: '120', height: '99999' }),
   );
 
-  assert.equal(profile.width, 758);
-  assert.equal(profile.height, 1024);
+  assert.equal(profile.width, 600);
+  assert.equal(profile.height, 800);
   assert.equal(profile.isCustomSize, false);
 });
 
 test('layout metrics keep padding inside the rendered canvas', () => {
-  const small = getLayoutMetrics({ width: 600, height: 800 });
-  const defaultSize = getLayoutMetrics({ width: 758, height: 1024 });
+  const small = getLayoutMetrics({ width: 500, height: 700 });
+  const defaultSize = getLayoutMetrics({ width: 600, height: 800 });
   const large = getLayoutMetrics({ width: 1072, height: 1448 });
 
   assert.ok(small.padding < defaultSize.padding);
