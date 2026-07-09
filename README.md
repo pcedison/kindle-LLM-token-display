@@ -28,10 +28,13 @@ Add these in Vercel Project Settings -> Environment Variables:
 ```text
 CLAUDE_STATUS_VALUE
 CLAUDE_RESET_LABEL
+CLAUDE_PROGRESS_VALUE
 OPENAI_STATUS_VALUE
 OPENAI_RESET_LABEL
+OPENAI_PROGRESS_VALUE
 GEMINI_STATUS_VALUE
 GEMINI_RESET_LABEL
+GEMINI_PROGRESS_VALUE
 ```
 
 Example values:
@@ -39,14 +42,20 @@ Example values:
 ```text
 CLAUDE_STATUS_VALUE=12%
 CLAUDE_RESET_LABEL=Reset 2026-08-01
+CLAUDE_PROGRESS_VALUE=12
 OPENAI_STATUS_VALUE=$18.42
 OPENAI_RESET_LABEL=Reset 2026-07-31
+OPENAI_PROGRESS_VALUE=28
 GEMINI_STATUS_VALUE=4.5k / 5k
 GEMINI_RESET_LABEL=Window 24h
+GEMINI_PROGRESS_VALUE=90
 ```
 
-After changing Vercel env vars, redeploy the production deployment. The Kindle
-will pick up the new values on its next refresh.
+`*_PROGRESS_VALUE` is optional. If the display value contains a percentage such
+as `96%`, the dashboard can infer the progress bar automatically. Use the
+progress variable when the display value is money or text. After changing Vercel
+env vars, redeploy the production deployment. The Kindle will pick up the new
+values on its next refresh.
 
 ## URL Parameters
 
