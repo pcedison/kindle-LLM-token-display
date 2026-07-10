@@ -332,3 +332,18 @@ Release verification must include:
   recover, and uninstall the project without relying on the original owner's
   Vercel project or D-drive layout.
 - The repository satisfies the v1.0.0 open-source release requirements above.
+
+## Official References
+
+- Claude Code status-line JSON and rate-limit fields:
+  <https://code.claude.com/docs/en/statusline>
+- Claude Code usage and cost reporting boundaries:
+  <https://code.claude.com/docs/en/costs>
+- Claude Code authentication and credential-use policy:
+  <https://code.claude.com/docs/en/legal-and-compliance>
+- OpenAI Codex app-server protocol and `account/rateLimits/read`:
+  <https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md>
+- OpenAI Codex plan usage overview:
+  <https://help.openai.com/en/articles/11369540-using-codex-with-chatgpt>
+- Vercel private Blob storage:
+  <https://vercel.com/docs/vercel-blob/private-storage>
