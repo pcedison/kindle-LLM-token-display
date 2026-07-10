@@ -30,3 +30,27 @@ append_query_param() {
   esac
   printf '%s%s%s=%s%s\n' "$url" "$separator" "$2" "$3" "$fragment"
 }
+
+find_duration_rtc_path() {
+  if [ -n "${RTC_WAKE_PATH:-}" ] && [ -e "$RTC_WAKE_PATH" ]; then
+    printf '%s\n' "$RTC_WAKE_PATH"
+    return 0
+  fi
+
+  for candidate in /sys/devices/platform/mxc_rtc.0/wakeup_enable /sys/devices/platform/*rtc*/wakeup_enable; do
+    [ -w "$candidate" ] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+
+  return 1
+}
+
+suspend_for_seconds() {
+  duration=$1
+  rtc_path=$(find_duration_rtc_path) || return 1
+  power_state=${POWER_STATE_PATH:-/sys/power/state}
+
+  printf '%s' "$duration" >"$rtc_path" || return 1
+  printf 'mem\n' >"$power_state" || return 1
+}

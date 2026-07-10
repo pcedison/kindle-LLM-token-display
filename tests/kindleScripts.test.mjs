@@ -94,7 +94,10 @@ test('uses LIPC after an invalid gasgauge result and does not consult powerd_tes
         shellFlag,
         'chmod +x "$PWD/' + fixture + '/gasgauge-info" "$PWD/' + fixture + '/lipc-get-prop" "$PWD/' + fixture + '/powerd_test"; PATH="$PWD/' + fixture + ':$PATH" BATTERY_SYSFS_ROOT="$PWD/' + fixture + '/sys" POWERD_MARKER="$PWD/' + fixture + '/powerd-ran" ./kindle-extension/local/get-battery-level.sh',
       ],
-      { cwd: process.cwd(), encoding: 'utf8' },
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      },
     );
 
     assert.equal(result.status, 0, result.stderr);
@@ -134,7 +137,10 @@ test('uses an isolated Kindle sysfs battery_capacity before LIPC', () => {
         shellFlag,
         'chmod +x "$PWD/' + fixture + '/gasgauge-info" "$PWD/' + fixture + '/lipc-get-prop"; PATH="$PWD/' + fixture + ':$PATH" BATTERY_SYSFS_ROOT="$PWD/' + fixture + '/sys" LIPC_MARKER="$PWD/' + fixture + '/lipc-ran" ./kindle-extension/local/get-battery-level.sh',
       ],
-      { cwd: process.cwd(), encoding: 'utf8' },
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      },
     );
 
     assert.equal(result.status, 0, result.stderr);
@@ -163,7 +169,10 @@ test('parses the final powerd_test Battery Level after earlier sources fail', ()
         shellFlag,
         'chmod +x "$PWD/' + fixture + '/gasgauge-info" "$PWD/' + fixture + '/lipc-get-prop" "$PWD/' + fixture + '/powerd_test"; PATH="$PWD/' + fixture + ':$PATH" BATTERY_SYSFS_ROOT="$PWD/' + fixture + '/sys" ./kindle-extension/local/get-battery-level.sh',
       ],
-      { cwd: process.cwd(), encoding: 'utf8' },
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      },
     );
 
     assert.equal(result.status, 0, result.stderr);
@@ -192,7 +201,10 @@ test('uses the first valid battery source and forwards it without logging the co
         shellFlag,
         `chmod +x "$PWD/${fixture}/gasgauge-info" "$PWD/${fixture}/wget"; PATH="$PWD/${fixture}:$PATH" CAPTURE="$PWD/${fixture}/fetch-url" DASHBOARD_URL='https://example.test/api?token=private' ./kindle-extension/local/fetch-dashboard.sh "$PWD/${fixture}/dashboard.png"`,
       ],
-      { cwd: process.cwd(), encoding: 'utf8' },
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+      },
     );
 
     assert.equal(result.status, 0, result.stderr);
@@ -203,4 +215,71 @@ test('uses the first valid battery source and forwards it without logging the co
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('finds an overridden duration RTC path and writes suspend inputs without suspending the host', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kindle-rtc-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const rtcPath = join(directory, 'wakeup_enable');
+  const powerStatePath = join(directory, 'power_state');
+
+  writeFileSync(rtcPath, '');
+  writeFileSync(powerStatePath, '');
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `export RTC_WAKE_PATH="$PWD/${fixture}/wakeup_enable"; export POWER_STATE_PATH="$PWD/${fixture}/power_state"; . ./kindle-extension/local/dashboard-utils.sh; find_duration_rtc_path; suspend_for_seconds 60; printf '\\n'; cat "$PWD/${fixture}/wakeup_enable"; printf '|'; cat "$PWD/${fixture}/power_state"`,
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: { ...process.env, RTC_WAKE_PATH: rtcPath, POWER_STATE_PATH: powerStatePath },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /wakeup_enable/);
+    assert.match(result.stdout, /60\|mem/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('reports no duration RTC path when the override is missing', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kindle-rtc-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `export RTC_WAKE_PATH="$PWD/${fixture}/missing"; . ./kindle-extension/local/dashboard-utils.sh; find_duration_rtc_path`,
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: { ...process.env, RTC_WAKE_PATH: join(directory, 'missing') },
+      },
+    );
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('ships the diagnostic and low-power probe actions without enabling RTC by default', () => {
+  assert.equal(existsSync(join(process.cwd(), 'kindle-extension', 'diagnose.sh')), true);
+  assert.equal(existsSync(join(process.cwd(), 'kindle-extension', 'low-power-test.sh')), true);
+
+  const menu = readFileSync(join(process.cwd(), 'kindle-extension', 'menu.json'), 'utf8');
+  assert.match(menu, /Low Power Test \(60 sec\)/);
+
+  const env = readFileSync(join(process.cwd(), 'kindle-extension', 'local', 'env.sh'), 'utf8');
+  assert.match(env, /DASHBOARD_USE_RTC=.*false/);
 });
