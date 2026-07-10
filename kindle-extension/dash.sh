@@ -12,6 +12,7 @@ RTC=${RTC:-/sys/devices/platform/mxc_rtc.0/wakeup_enable}
 
 # shellcheck disable=SC1090
 [ -f "$ENV_FILE" ] && . "$ENV_FILE"
+. "$DIR/local/dashboard-utils.sh"
 
 num_refresh=0
 ui_stopped=false
@@ -109,13 +110,31 @@ log_battery_stats() {
 sleep_until_next_refresh() {
   duration=${1:-$REFRESH_INTERVAL_SECS}
 
-  if [ "$DASHBOARD_USE_RTC" = true ] && [ -e "$RTC" ]; then
-    [ "$(cat "$RTC")" -eq 0 ] && echo -n "$duration" >"$RTC"
-    echo "mem" >/sys/power/state
-  else
+  if [ "$DASHBOARD_USE_RTC" != true ]; then
     echo "Sleeping in userspace for ${duration}s"
     sleep "$duration"
+    return 0
   fi
+
+  rtc_path=$(find_duration_rtc_path 2>/dev/null) || {
+    echo "RTC wake path unavailable; falling back to userspace sleep"
+    sleep "$duration"
+    return 0
+  }
+
+  echo "RTC sleep using $rtc_path for ${duration}s"
+  lipc-set-prop com.lab126.wifid enable 0 >/dev/null 2>&1 || true
+  sync >/dev/null 2>&1 || true
+
+  if suspend_for_seconds "$duration"; then
+    echo "Woke from RTC sleep"
+    "$DIR/wait-for-wifi.sh" "$WIFI_TEST_IP" || echo "Wi-Fi did not reconnect after RTC wake"
+    return 0
+  fi
+
+  echo "RTC suspend failed; restoring Wi-Fi and falling back to userspace sleep"
+  lipc-set-prop com.lab126.wifid enable 1 >/dev/null 2>&1 || true
+  sleep "$duration"
 }
 
 main_loop() {

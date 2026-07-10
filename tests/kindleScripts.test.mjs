@@ -283,3 +283,13 @@ test('ships the diagnostic and low-power probe actions without enabling RTC by d
   const env = readFileSync(join(process.cwd(), 'kindle-extension', 'local', 'env.sh'), 'utf8');
   assert.match(env, /DASHBOARD_USE_RTC=.*false/);
 });
+
+test('keeps RTC refresh opt-in and falls back to a full userspace sleep', () => {
+  const env = readFileSync(join(process.cwd(), 'kindle-extension', 'local', 'env.sh'), 'utf8');
+  const dash = readFileSync(join(process.cwd(), 'kindle-extension', 'dash.sh'), 'utf8');
+
+  assert.match(env, /DASHBOARD_USE_RTC=.*false/);
+  assert.match(dash, /suspend_for_seconds/);
+  assert.match(dash, /com\.lab126\.wifid enable 0/);
+  assert.match(dash, /sleep \"\$duration\"/);
+});
