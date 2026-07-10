@@ -116,13 +116,13 @@ sleep_until_next_refresh() {
     return 0
   fi
 
-  rtc_path=$(find_duration_rtc_path 2>/dev/null) || {
+  rtc_source=$(find_rtc_wake_source 2>/dev/null) || {
     echo "RTC wake path unavailable; falling back to userspace sleep"
     sleep "$duration"
     return 0
   }
 
-  echo "RTC sleep using $rtc_path for ${duration}s"
+  echo "RTC sleep using $rtc_source for ${duration}s"
   lipc-set-prop com.lab126.wifid enable 0 >/dev/null 2>&1 || true
   sync >/dev/null 2>&1 || true
 

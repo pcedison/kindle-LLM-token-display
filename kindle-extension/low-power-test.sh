@@ -22,13 +22,13 @@ pkill -f "extensions/kindle-dash/dash.sh" >/dev/null 2>&1 || true
 
 "$DIR/diagnose.sh" >/dev/null 2>&1 || true
 
-rtc_path=$(find_duration_rtc_path 2>/dev/null) || {
-  log "UNSUPPORTED:no-duration-rtc-path"
+rtc_source=$(find_rtc_wake_source 2>/dev/null) || {
+  log "UNSUPPORTED:no-rtc-wake-source"
   trim_log
   exit 1
 }
 
-log "RTC_PATH_FOUND"
+log "RTC_SOURCE_FOUND:$rtc_source"
 sync >/dev/null 2>&1 || true
 
 if ! suspend_for_seconds 60; then
