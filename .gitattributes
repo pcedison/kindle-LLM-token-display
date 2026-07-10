@@ -1,0 +1,2 @@
+kindle-extension/*.sh text eol=lf
+kindle-extension/**/*.sh text eol=lf

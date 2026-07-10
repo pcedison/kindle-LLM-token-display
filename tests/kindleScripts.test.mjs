@@ -293,3 +293,12 @@ test('keeps RTC refresh opt-in and falls back to a full userspace sleep', () => 
   assert.match(dash, /com\.lab126\.wifid enable 0/);
   assert.match(dash, /sleep \"\$duration\"/);
 });
+
+test('diagnostics inspect standard Wario RTC interfaces without writing them', () => {
+  const diagnose = readFileSync(join(process.cwd(), 'kindle-extension', 'diagnose.sh'), 'utf8');
+
+  assert.match(diagnose, /\/sys\/class\/rtc\/rtc\*\/wakealarm/);
+  assert.match(diagnose, /\/proc\/driver\/rtc/);
+  assert.match(diagnose, /\/dev\/rtc\*/);
+  assert.doesNotMatch(diagnose, />+\s*\"\$wakealarm\"/);
+});
