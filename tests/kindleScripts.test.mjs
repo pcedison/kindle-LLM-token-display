@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
@@ -27,12 +27,20 @@ function runShell(command, { allowFailure = false } = {}) {
   return shellResult.stdout;
 }
 
-test('normalizes Kindle battery values and appends the battery query parameter', () => {
+test('normalizes only exact Kindle battery values', () => {
   assert.equal(runShell("normalize_battery_level '72%'"), '72');
   assert.equal(runShell("normalize_battery_level ' 0 '"), '0');
   assert.equal(runShell("normalize_battery_level '100'"), '100');
   assert.equal(runShell("normalize_battery_level '-5%'", { allowFailure: true }).status, 1);
   assert.equal(runShell("normalize_battery_level '101%'", { allowFailure: true }).status, 1);
+  for (const value of ['7 2', '72%%', '1%00', '%72', '72 %']) {
+    const result = runShell("normalize_battery_level '" + value + "'", { allowFailure: true });
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+  }
+});
+
+test('appends the battery query parameter before an optional fragment', () => {
   assert.equal(
     runShell("append_query_param 'https://example.test/api' battery 72"),
     'https://example.test/api?battery=72',
@@ -40,6 +48,14 @@ test('normalizes Kindle battery values and appends the battery query parameter',
   assert.equal(
     runShell("append_query_param 'https://example.test/api?profile=dp75sdi' battery 72"),
     'https://example.test/api?profile=dp75sdi&battery=72',
+  );
+  assert.equal(
+    runShell("append_query_param 'https://example.test/api#fragment' battery 72"),
+    'https://example.test/api?battery=72#fragment',
+  );
+  assert.equal(
+    runShell("append_query_param 'https://example.test/api?profile=dp75sdi#fragment' battery 72"),
+    'https://example.test/api?profile=dp75sdi&battery=72#fragment',
   );
 });
 
@@ -57,6 +73,36 @@ test('reads a valid diagnostic battery value and rejects invalid values', () => 
   });
   assert.equal(invalid.status, 1);
   assert.equal(invalid.stdout, '');
+});
+
+test('uses LIPC after an invalid gasgauge result and does not consult powerd_test', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kindle-scripts-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const powerdMarker = join(directory, 'powerd-ran');
+
+  writeFileSync(join(directory, 'gasgauge-info'), '#!/usr/bin/env sh\nprintf \'1%%00\\n\'\n');
+  writeFileSync(join(directory, 'lipc-get-prop'), '#!/usr/bin/env sh\nprintf \'64%%\\n\'\n');
+  writeFileSync(
+    join(directory, 'powerd_test'),
+    '#!/usr/bin/env sh\nprintf invoked > "$POWERD_MARKER"\nprintf \'Battery Level: 51%%\\n\'\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        'chmod +x "$PWD/' + fixture + '/gasgauge-info" "$PWD/' + fixture + '/lipc-get-prop" "$PWD/' + fixture + '/powerd_test"; PATH="$PWD/' + fixture + ':$PATH" POWERD_MARKER="$PWD/' + fixture + '/powerd-ran" ./kindle-extension/local/get-battery-level.sh',
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), '64');
+    assert.equal(existsSync(powerdMarker), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test('uses the first valid battery source and forwards it without logging the configured URL', () => {

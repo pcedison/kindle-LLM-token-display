@@ -27,6 +27,9 @@ if battery=$(read_command_battery gasgauge-info -c); then
 fi
 
 for battery_file in \
+  /sys/devices/system/yoshi_battery/yoshi_battery0/battery_capacity \
+  /sys/devices/system/wario_battery/wario_battery0/battery_capacity \
+  /sys/devices/system/*battery*/*/battery_capacity \
   /sys/class/power_supply/battery/battery_capacity \
   /sys/class/power_supply/battery/capacity \
   /sys/class/power_supply/BAT0/battery_capacity \
