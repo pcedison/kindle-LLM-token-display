@@ -12,6 +12,7 @@ mkdir -p "$LOG_DIR"
 
 {
   echo "$(date) Kindle dashboard diagnostics"
+  echo "kernel=$(uname -a 2>/dev/null || echo unavailable)"
   battery=$($DIR/local/get-battery-level.sh 2>/dev/null || true)
   echo "battery=${battery:-unknown}"
 
@@ -38,7 +39,42 @@ mkdir -p "$LOG_DIR"
     echo "rtc_candidate=$candidate writable=$( [ -w "$candidate" ] && echo yes || echo no )"
   done
 
-  echo "power_state=$( [ -e "${POWER_STATE_PATH:-/sys/power/state}" ] && echo present || echo missing )"
+  for rtc_dir in /sys/class/rtc/rtc*; do
+    [ -d "$rtc_dir" ] || continue
+    echo "rtc_class=$rtc_dir"
+    for rtc_value in name date time since_epoch; do
+      [ -r "$rtc_dir/$rtc_value" ] || continue
+      echo "rtc_${rtc_value}=$(cat "$rtc_dir/$rtc_value" 2>/dev/null)"
+    done
+  done
+
+  for wakealarm in /sys/class/rtc/rtc*/wakealarm; do
+    [ -e "$wakealarm" ] || continue
+    echo "rtc_wakealarm=$wakealarm value=$(cat "$wakealarm" 2>/dev/null) writable=$( [ -w "$wakealarm" ] && echo yes || echo no )"
+  done
+
+  if [ -r /proc/driver/rtc ]; then
+    echo "rtc_proc_begin"
+    sed -n '1,20p' /proc/driver/rtc 2>/dev/null
+    echo "rtc_proc_end"
+  else
+    echo "rtc_proc=unavailable"
+  fi
+
+  for rtc_device in /dev/rtc*; do
+    [ -e "$rtc_device" ] || continue
+    echo "rtc_device=$rtc_device"
+  done
+
+  if command -v rtcwake >/dev/null 2>&1; then
+    echo "rtcwake=$(command -v rtcwake)"
+  else
+    echo "rtcwake=unavailable"
+  fi
+
+  power_state_path=${POWER_STATE_PATH:-/sys/power/state}
+  echo "power_state=$( [ -e "$power_state_path" ] && echo present || echo missing )"
+  [ -r "$power_state_path" ] && echo "power_state_values=$(cat "$power_state_path" 2>/dev/null)"
   if command -v ps >/dev/null 2>&1; then
     ps | grep '[d]ash.sh' >/dev/null 2>&1 && echo "dashboard_process=running" || echo "dashboard_process=stopped"
   fi
