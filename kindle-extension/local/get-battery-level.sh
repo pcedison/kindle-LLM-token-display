@@ -5,6 +5,8 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 . "$DIR/dashboard-utils.sh"
 
+BATTERY_SYSFS_ROOT=${BATTERY_SYSFS_ROOT:-/sys}
+
 read_command_battery() {
   value=$("$@" 2>/dev/null) || return 1
   normalize_battery_level "$value"
@@ -27,17 +29,17 @@ if battery=$(read_command_battery gasgauge-info -c); then
 fi
 
 for battery_file in \
-  /sys/devices/system/yoshi_battery/yoshi_battery0/battery_capacity \
-  /sys/devices/system/wario_battery/wario_battery0/battery_capacity \
-  /sys/devices/system/*battery*/*/battery_capacity \
-  /sys/class/power_supply/battery/battery_capacity \
-  /sys/class/power_supply/battery/capacity \
-  /sys/class/power_supply/BAT0/battery_capacity \
-  /sys/class/power_supply/BAT0/capacity \
-  /sys/class/power_supply/*/battery_capacity \
-  /sys/class/power_supply/*/capacity \
-  /sys/devices/platform/*/battery_capacity \
-  /sys/devices/platform/*/capacity; do
+  "$BATTERY_SYSFS_ROOT"/devices/system/yoshi_battery/yoshi_battery0/battery_capacity \
+  "$BATTERY_SYSFS_ROOT"/devices/system/wario_battery/wario_battery0/battery_capacity \
+  "$BATTERY_SYSFS_ROOT"/devices/system/*battery*/*/battery_capacity \
+  "$BATTERY_SYSFS_ROOT"/class/power_supply/battery/battery_capacity \
+  "$BATTERY_SYSFS_ROOT"/class/power_supply/battery/capacity \
+  "$BATTERY_SYSFS_ROOT"/class/power_supply/BAT0/battery_capacity \
+  "$BATTERY_SYSFS_ROOT"/class/power_supply/BAT0/capacity \
+  "$BATTERY_SYSFS_ROOT"/class/power_supply/*/battery_capacity \
+  "$BATTERY_SYSFS_ROOT"/class/power_supply/*/capacity \
+  "$BATTERY_SYSFS_ROOT"/devices/platform/*/battery_capacity \
+  "$BATTERY_SYSFS_ROOT"/devices/platform/*/capacity; do
   if battery=$(read_file_battery "$battery_file"); then
     printf '%s\n' "$battery"
     exit 0
@@ -49,8 +51,10 @@ if battery=$(read_command_battery lipc-get-prop com.lab126.powerd battLevel); th
   exit 0
 fi
 
-if battery=$(powerd_test -s 2>/dev/null | sed -n 's/^[[:space:]]*Battery Level:[[:space:]]*//p' | while IFS= read -r value; do normalize_battery_level "$value" && break; done); then
-  [ -n "$battery" ] && printf '%s\n' "$battery" && exit 0
+powerd_value=$(powerd_test -s 2>/dev/null | sed -n 's/^[[:space:]]*Battery Level:[[:space:]]*//p' | sed -n '1p')
+if battery=$(normalize_battery_level "$powerd_value"); then
+  printf '%s\n' "$battery"
+  exit 0
 fi
 
 exit 1

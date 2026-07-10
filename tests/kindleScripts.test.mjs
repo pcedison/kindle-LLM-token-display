@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
@@ -92,7 +92,7 @@ test('uses LIPC after an invalid gasgauge result and does not consult powerd_tes
       shell,
       [
         shellFlag,
-        'chmod +x "$PWD/' + fixture + '/gasgauge-info" "$PWD/' + fixture + '/lipc-get-prop" "$PWD/' + fixture + '/powerd_test"; PATH="$PWD/' + fixture + ':$PATH" POWERD_MARKER="$PWD/' + fixture + '/powerd-ran" ./kindle-extension/local/get-battery-level.sh',
+        'chmod +x "$PWD/' + fixture + '/gasgauge-info" "$PWD/' + fixture + '/lipc-get-prop" "$PWD/' + fixture + '/powerd_test"; PATH="$PWD/' + fixture + ':$PATH" BATTERY_SYSFS_ROOT="$PWD/' + fixture + '/sys" POWERD_MARKER="$PWD/' + fixture + '/powerd-ran" ./kindle-extension/local/get-battery-level.sh',
       ],
       { cwd: process.cwd(), encoding: 'utf8' },
     );
@@ -100,6 +100,74 @@ test('uses LIPC after an invalid gasgauge result and does not consult powerd_tes
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout.trim(), '64');
     assert.equal(existsSync(powerdMarker), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('uses an isolated Kindle sysfs battery_capacity before LIPC', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kindle-scripts-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const sysfsBattery = join(
+    directory,
+    'sys',
+    'devices',
+    'system',
+    'yoshi_battery',
+    'yoshi_battery0',
+    'battery_capacity',
+  );
+  const lipcMarker = join(directory, 'lipc-ran');
+
+  mkdirSync(join(sysfsBattery, '..'), { recursive: true });
+  writeFileSync(sysfsBattery, '58%\n');
+  writeFileSync(join(directory, 'gasgauge-info'), '#!/usr/bin/env sh\nprintf \'invalid\\n\'\n');
+  writeFileSync(
+    join(directory, 'lipc-get-prop'),
+    '#!/usr/bin/env sh\nprintf invoked > "$LIPC_MARKER"\nprintf \'64%%\\n\'\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        'chmod +x "$PWD/' + fixture + '/gasgauge-info" "$PWD/' + fixture + '/lipc-get-prop"; PATH="$PWD/' + fixture + ':$PATH" BATTERY_SYSFS_ROOT="$PWD/' + fixture + '/sys" LIPC_MARKER="$PWD/' + fixture + '/lipc-ran" ./kindle-extension/local/get-battery-level.sh',
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), '58');
+    assert.equal(existsSync(lipcMarker), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('parses the final powerd_test Battery Level after earlier sources fail', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kindle-scripts-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+
+  writeFileSync(join(directory, 'gasgauge-info'), '#!/usr/bin/env sh\nprintf \'invalid\\n\'\n');
+  writeFileSync(join(directory, 'lipc-get-prop'), '#!/usr/bin/env sh\nprintf \'invalid\\n\'\n');
+  writeFileSync(
+    join(directory, 'powerd_test'),
+    '#!/usr/bin/env sh\nprintf \'Power status\\nBattery Level: 47%%\'\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        'chmod +x "$PWD/' + fixture + '/gasgauge-info" "$PWD/' + fixture + '/lipc-get-prop" "$PWD/' + fixture + '/powerd_test"; PATH="$PWD/' + fixture + ':$PATH" BATTERY_SYSFS_ROOT="$PWD/' + fixture + '/sys" ./kindle-extension/local/get-battery-level.sh',
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), '47');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
