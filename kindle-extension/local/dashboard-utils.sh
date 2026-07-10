@@ -46,11 +46,81 @@ find_duration_rtc_path() {
   return 1
 }
 
+valid_rtc_epoch() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+
+  [ "$1" -ge 1577836800 ] 2>/dev/null
+}
+
+rtc_since_epoch_path() {
+  if [ -n "${RTC_SINCE_EPOCH_PATH:-}" ]; then
+    printf '%s\n' "$RTC_SINCE_EPOCH_PATH"
+    return 0
+  fi
+
+  printf '%s/since_epoch\n' "${1%/wakealarm}"
+}
+
+find_epoch_rtc_path() {
+  if [ -n "${RTC_WAKEALARM_PATH:-}" ] && [ -e "$RTC_WAKEALARM_PATH" ]; then
+    since_epoch_path=$(rtc_since_epoch_path "$RTC_WAKEALARM_PATH") || return 1
+    [ -r "$since_epoch_path" ] || return 1
+    rtc_epoch=$(cat "$since_epoch_path" 2>/dev/null) || return 1
+    valid_rtc_epoch "$rtc_epoch" || return 1
+    printf '%s\n' "$RTC_WAKEALARM_PATH"
+    return 0
+  fi
+
+  for candidate in /sys/class/rtc/rtc0/wakealarm /sys/class/rtc/rtc1/wakealarm /sys/class/rtc/rtc*/wakealarm; do
+    [ -w "$candidate" ] || continue
+    since_epoch_path=$(rtc_since_epoch_path "$candidate") || continue
+    [ -r "$since_epoch_path" ] || continue
+    rtc_epoch=$(cat "$since_epoch_path" 2>/dev/null) || continue
+    valid_rtc_epoch "$rtc_epoch" || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+
+  return 1
+}
+
+find_rtc_wake_source() {
+  if rtc_path=$(find_duration_rtc_path 2>/dev/null); then
+    printf 'duration:%s\n' "$rtc_path"
+    return 0
+  fi
+
+  if rtc_path=$(find_epoch_rtc_path 2>/dev/null); then
+    printf 'epoch:%s\n' "$rtc_path"
+    return 0
+  fi
+
+  return 1
+}
+
 suspend_for_seconds() {
   duration=$1
-  rtc_path=$(find_duration_rtc_path) || return 1
   power_state=${POWER_STATE_PATH:-/sys/power/state}
 
-  printf '%s' "$duration" >"$rtc_path" || return 1
+  case "$duration" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$duration" -gt 0 ] 2>/dev/null || return 1
+
+  if rtc_path=$(find_duration_rtc_path 2>/dev/null); then
+    printf '%s' "$duration" >"$rtc_path" || return 1
+  elif rtc_path=$(find_epoch_rtc_path 2>/dev/null); then
+    since_epoch_path=$(rtc_since_epoch_path "$rtc_path") || return 1
+    rtc_epoch=$(cat "$since_epoch_path" 2>/dev/null) || return 1
+    valid_rtc_epoch "$rtc_epoch" || return 1
+    wake_epoch=$((rtc_epoch + duration))
+    printf '0' >"$rtc_path" || return 1
+    printf '%s' "$wake_epoch" >"$rtc_path" || return 1
+  else
+    return 1
+  fi
+
   printf 'mem\n' >"$power_state" || return 1
 }

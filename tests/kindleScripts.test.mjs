@@ -273,6 +273,59 @@ test('reports no duration RTC path when the override is missing', () => {
   }
 });
 
+test('schedules an epoch RTC wakealarm before writing the mem power state', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kindle-wakealarm-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const wakealarmPath = join(directory, 'wakealarm');
+  const sinceEpochPath = join(directory, 'since_epoch');
+  const powerStatePath = join(directory, 'power_state');
+
+  writeFileSync(wakealarmPath, '');
+  writeFileSync(sinceEpochPath, '1700000000\n');
+  writeFileSync(powerStatePath, '');
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `export RTC_WAKEALARM_PATH="$PWD/${fixture}/wakealarm"; export RTC_SINCE_EPOCH_PATH="$PWD/${fixture}/since_epoch"; export POWER_STATE_PATH="$PWD/${fixture}/power_state"; . ./kindle-extension/local/dashboard-utils.sh; find_epoch_rtc_path; suspend_for_seconds 60; printf '\\n'; cat "$PWD/${fixture}/wakealarm"; printf '|'; cat "$PWD/${fixture}/power_state"`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /wakealarm/);
+    assert.match(result.stdout, /1700000060\|mem/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('rejects an epoch RTC whose clock is still near 1970', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kindle-wakealarm-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+
+  writeFileSync(join(directory, 'wakealarm'), '');
+  writeFileSync(join(directory, 'since_epoch'), '69321\n');
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `export RTC_WAKEALARM_PATH="$PWD/${fixture}/wakealarm"; export RTC_SINCE_EPOCH_PATH="$PWD/${fixture}/since_epoch"; . ./kindle-extension/local/dashboard-utils.sh; find_epoch_rtc_path`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('ships the diagnostic and low-power probe actions without enabling RTC by default', () => {
   assert.equal(existsSync(join(process.cwd(), 'kindle-extension', 'diagnose.sh')), true);
   assert.equal(existsSync(join(process.cwd(), 'kindle-extension', 'low-power-test.sh')), true);
@@ -287,11 +340,14 @@ test('ships the diagnostic and low-power probe actions without enabling RTC by d
 test('keeps RTC refresh opt-in and falls back to a full userspace sleep', () => {
   const env = readFileSync(join(process.cwd(), 'kindle-extension', 'local', 'env.sh'), 'utf8');
   const dash = readFileSync(join(process.cwd(), 'kindle-extension', 'dash.sh'), 'utf8');
+  const probe = readFileSync(join(process.cwd(), 'kindle-extension', 'low-power-test.sh'), 'utf8');
 
   assert.match(env, /DASHBOARD_USE_RTC=.*false/);
+  assert.match(dash, /find_rtc_wake_source/);
   assert.match(dash, /suspend_for_seconds/);
   assert.match(dash, /com\.lab126\.wifid enable 0/);
   assert.match(dash, /sleep \"\$duration\"/);
+  assert.match(probe, /find_rtc_wake_source/);
 });
 
 test('diagnostics inspect standard Wario RTC interfaces without writing them', () => {
