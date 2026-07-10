@@ -16,8 +16,11 @@ https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&
 - Dashboard PNGs are flattened to opaque 8-bit grayscale before delivery so
   older Kindle `eips` builds do not misread RGBA/alpha PNG data.
 - `profile=dp75sdi` outputs `758x1024` for the mounted DP75SDI device.
+- The top-left header shows the Kindle battery icon and percentage. The Kindle
+  reads its own battery level and appends it as `battery=N` on every refresh.
 - Kindle scripts live under `/mnt/us/extensions/kindle-dash`.
-- KUAL has Start, Refresh Now, and Stop/Restore actions.
+- KUAL has Start, Refresh Now, diagnostics, a guarded 60-second Low Power Test,
+  and Stop/Restore actions.
 - Kindle refresh interval is controlled locally by `REFRESH_INTERVAL_SECS`.
 
 ## Final Values To Fill In
@@ -106,12 +109,45 @@ Important files:
 ```text
 local/env.sh              refresh interval and dashboard URL
 local/fetch-dashboard.sh  downloads the PNG from Vercel
+local/get-battery-level.sh reads the Kindle battery percentage
 local/display-test-frame.sh draws a 758x1024 diagnostic PNG without clearing the screen
 start.sh                  starts the long-running dashboard loop
 refresh-now.sh            refreshes once immediately
+diagnose.sh               writes battery, Wi-Fi, power, thermal, and RTC diagnostics
+low-power-test.sh         probes timed suspend and wake for 60 seconds
 stop.sh                   stops dashboard and restores Kindle UI
 logs/dash.log             runtime log
+logs/power-diagnostics.log diagnostic report
+logs/low-power-test.log   timed-suspend probe result
 ```
+
+The dashboard URL may be previewed in a browser with a simulated battery value:
+
+```text
+https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&claude=true&openai=true&gemini=false&battery=82
+```
+
+The battery value is normally supplied automatically by Kindle and should not
+be added manually to `local/env.sh`.
+
+## Low-Power Probe
+
+`DASHBOARD_USE_RTC` remains `false` by default. Do not change it until the real
+device has passed the probe:
+
+1. Mount the Kindle and copy the reviewed `kindle-extension` folder to
+   `D:\extensions\kindle-dash`.
+2. Safely eject the Kindle and open KUAL.
+3. Run `Write Dashboard Status Log`.
+4. Mount the Kindle again and inspect `logs/power-diagnostics.log`.
+5. Safely eject again and run `Low Power Test (60 sec)`.
+6. After the Kindle wakes, mount it and inspect `logs/low-power-test.log`.
+
+Only a log containing `WAKE_SUCCESS` after `PROBE_START` proves that timed
+sleep and wake work on this device. Until then, leave
+`DASHBOARD_USE_RTC=false`; the dashboard uses the stable userspace wait mode.
+If the probe reports `UNSUPPORTED`, continue using the normal mode and do not
+repeat it unattended.
 
 ## Kindle Refresh Interval
 

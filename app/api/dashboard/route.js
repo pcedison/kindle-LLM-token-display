@@ -2,6 +2,7 @@ import { ImageResponse } from 'next/og';
 import { getLayoutMetrics, resolveDashboardProfile } from './kindleProfiles.mjs';
 import { makeOpaqueGrayscalePng } from './kindlePng.mjs';
 import { getProviderCards } from './providerData.mjs';
+import { getBatteryStatus } from './batteryStatus.mjs';
 
 export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
@@ -26,6 +27,62 @@ function todayLabel() {
       minute: '2-digit',
     })
     .replace(' ', ' / ');
+}
+
+function renderBatteryIndicator(battery) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '7px',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            width: '42px',
+            height: '20px',
+            border: '3px solid #111',
+            boxSizing: 'border-box',
+            backgroundColor: '#f5f5ee',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              width: `${battery.fillPercent}%`,
+              height: '100%',
+              backgroundColor: '#111',
+            }}
+          />
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            width: '4px',
+            height: '10px',
+            backgroundColor: '#111',
+          }}
+        />
+      </div>
+      <span
+        style={{
+          fontSize: 18,
+          fontWeight: 900,
+          lineHeight: 1,
+        }}
+      >
+        {battery.label}
+      </span>
+    </div>
+  );
 }
 
 function renderProgressTicks() {
@@ -274,6 +331,7 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const profile = resolveDashboardProfile(searchParams);
   const metrics = getLayoutMetrics(profile);
+  const battery = getBatteryStatus(searchParams);
   const visibleProviders = getProviderCards().filter((provider) =>
     isVisible(searchParams, provider.queryKey, provider.defaultVisible),
   );
@@ -315,7 +373,7 @@ export async function GET(request) {
         <div
           style={{
             display: 'flex',
-            justifyContent: 'flex-end',
+            justifyContent: 'space-between',
             alignItems: 'flex-end',
             borderBottom: `${metrics.border * 2 + 1}px solid #111`,
             paddingBottom: '8px',
@@ -323,6 +381,7 @@ export async function GET(request) {
             width: '100%',
           }}
         >
+          {renderBatteryIndicator(battery)}
           <div
             style={{
               display: 'flex',

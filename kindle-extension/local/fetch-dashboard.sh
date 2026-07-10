@@ -1,7 +1,11 @@
 #!/usr/bin/env sh
 
+DIR="$(cd "$(dirname "$0")" && pwd)"
 OUT="$1"
 URL=${DASHBOARD_URL:-"https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&claude=true&openai=true&gemini=false"}
+
+# shellcheck disable=SC1091
+. "$DIR/dashboard-utils.sh"
 
 if [ -z "$OUT" ]; then
   echo "fetch-dashboard: missing output path"
@@ -11,14 +15,22 @@ fi
 TMP="${OUT}.tmp"
 rm -f "$TMP"
 
+if battery=$("$DIR/get-battery-level.sh" 2>/dev/null) && battery=$(normalize_battery_level "$battery"); then
+  FETCH_URL=$(append_query_param "$URL" battery "$battery")
+  echo "fetch-dashboard: battery=$battery"
+else
+  FETCH_URL="$URL"
+  echo "fetch-dashboard: battery=unknown"
+fi
+
 echo "fetch-dashboard: fetching dashboard PNG"
 
 if command -v wget >/dev/null 2>&1; then
-  wget -q -O "$TMP" "$URL" || wget --no-check-certificate -q -O "$TMP" "$URL"
+  wget -q -O "$TMP" "$FETCH_URL" || wget --no-check-certificate -q -O "$TMP" "$FETCH_URL"
 elif [ -x "$(dirname "$0")/../xh" ]; then
-  "$(dirname "$0")/../xh" -d -q -o "$TMP" get "$URL"
+  "$(dirname "$0")/../xh" -d -q -o "$TMP" get "$FETCH_URL"
 elif [ -x "$(dirname "$0")/../ht" ]; then
-  "$(dirname "$0")/../ht" -d -q -o "$TMP" get "$URL"
+  "$(dirname "$0")/../ht" -d -q -o "$TMP" get "$FETCH_URL"
 else
   echo "fetch-dashboard: no HTTP client found"
   exit 127
