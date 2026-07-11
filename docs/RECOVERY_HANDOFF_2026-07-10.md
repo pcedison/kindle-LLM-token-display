@@ -12,11 +12,11 @@ is approved. The current release candidate passes 130 tests, a Next.js productio
 build, shell and PowerShell syntax checks, and a local production HTTP PNG smoke
 test.
 
-The remaining work is external rollout: publish the reviewed snapshot to GitHub,
-confirm the Vercel deployment and private Blob configuration, install the Windows
-collector with real secrets, synchronize the mounted Kindle extension, and run a
-13-minute device acceptance cycle. These steps must not be described as complete
-until their external evidence is recorded below.
+GitHub publication, PR merge, the merge-commit Vercel build, and mounted-Kindle
+script synchronization are complete. Remaining external work is private Vercel
+Blob/secret configuration, a direct production PNG smoke test, real Windows
+collector installation, and an unplugged 13-minute device acceptance cycle. These
+steps must not be described as complete until their evidence is recorded below.
 
 ## Canonical Paths And Branches
 
@@ -25,9 +25,11 @@ until their external evidence is recorded below.
 - Original feature worktree: `<WORKSPACE>\kindle-llm-dash-live-quota`,
   branch `codex/live-quota-v1`, HEAD `de48e16` when the app closed.
 - Active recovery clone: `<WORKSPACE>\kindle-llm-dash\.recovery\live-quota`,
-  branch `codex/live-quota-recovery`, HEAD `3d7f351` before this handoff update.
+  branch `codex/live-quota-recovery`, HEAD `439859c` before this external-status
+  update.
 - GitHub feature branch observed before publication: `codex/live-quota-v1`, HEAD
-  `eefe204`.
+  `eefe204`; published snapshot HEAD is now `78a04b7`.
+- GitHub `main` after PR #4: `36fae92`.
 - True whole-feature base: `c48ba55`; implementation-plan checkpoint: `eefe204`.
 
 Use the recovery clone for all continuation work. It now has a real local
@@ -231,10 +233,13 @@ Do not commit these untracked diagnostics:
 - `node_modules.junction.backup/`
 - `node_modules.partial.junction.20260710115202/`
 
-The shell Git remote cannot reach `github.com:443` in the current sandbox, but
-the connected GitHub app is available. If publication uses GitHub's Git Data API,
-record that the remote commit is a squash snapshot of the reviewed local tree;
-the local granular commits remain the audit trail.
+The shell Git remote cannot reach `github.com:443` and GitHub CLI config is not
+readable in this sandbox. Publication therefore used the connected GitHub App's
+Git Data API. All 63 changed blobs matched their local Git blob SHA, and remote
+tree `ec20195b7fd25dc2cf61a3702cc94b07bebabb24` exactly matched the reviewed
+local tree. Remote snapshot `78a04b7` was merged through
+[PR #4](https://github.com/pcedison/kindle-LLM-token-display/pull/4) using squash;
+`main` is `36fae92`. The local granular commits remain the audit trail.
 
 ## Production Configuration Contract
 
@@ -244,6 +249,13 @@ values into Git, screenshots, issue text, command history, or this handoff.
 - `BLOB_READ_WRITE_TOKEN`
 - `DASHBOARD_INGEST_TOKEN`
 - `DASHBOARD_VIEW_TOKEN` (optional, but recommended for a private device URL)
+
+The GitHub status on merge commit `36fae92` reports the Vercel deployment as
+successful. This proves the integrated production build completed, but not that
+private Blob and all three values above are configured correctly. Direct endpoint
+verification remains pending because shell/web egress is blocked and the requested
+Chrome extension connection was unavailable. Do not infer secret presence from a
+green deployment check.
 
 Manual fixture variables remain optional and are not substitutes for live
 subscription quota. Provider API keys are intentionally not used: OpenAI and
@@ -267,36 +279,54 @@ the URL query, bearer token, Claude payload, Codex payload, or stored snapshot.
 Then trigger one collection cycle and confirm only a successful status and
 fresh timestamp. Do not paste raw collector config or state into a task.
 
+Current machine evidence: Task Scheduler has neither the old fixed uploader task
+nor any schema-2 GUID uploader task, so the real collector is not installed. A
+`%LOCALAPPDATA%\KindleLLMDashboard` directory is visible to the sandbox, but its
+contents and manifest are not readable under the sandbox identity. Before running
+the installer as the actual Windows user, inspect that directory. If it has no
+valid owned manifest, rename the whole directory to a timestamped quarantine
+folder instead of deleting individual unknown files; the installer intentionally
+fails closed when an install root exists without a manifest.
+
 ## Mounted Kindle State
 
-At the latest read-only audit, `D:` was mounted and
+At the latest synchronized audit, `D:` was mounted and
 `<KINDLE_DRIVE>:\extensions\kindle-dash` existed.
 
 - Matching files: `diagnose.sh`, `local/dashboard-utils.sh`,
   `local/display-once.sh`, `local/display-test-frame.sh`,
   `local/get-battery-level.sh`, `low-power-test.sh`, `refresh-now.sh`,
   `start.sh`, `stop.sh`, `test-frame.png`, and `wait-for-wifi.sh`.
-- Different files that must be synchronized after production verification:
-  `dash.sh`, `local/fetch-dashboard.sh`, and `menu.json`.
+- `dash.sh`, `local/fetch-dashboard.sh`, and `menu.json` were synchronized and
+  then matched the reviewed repository SHA. Backup folder:
+  `backups/pre-live-quota-20260711-101003`.
 - `local/env.sh` intentionally differs because it owns the private deployment
   URL. Preserve that file and update only the URL/view key when production auth
   is confirmed; never replace it with the public placeholder file.
+- Every other repository-managed Kindle file now matches the reviewed source.
+  Physical eject, KUAL start, Wi-Fi fetch, and 13-minute refresh acceptance have
+  not yet been run after this synchronization.
 
 Current sandbox policy permits reading `D:` but may reject writes. Do not claim
 the Kindle was updated unless hashes are re-read after a successful copy.
 
 ## Task 8: Pending External Rollout
 
-1. Publish the release-candidate snapshot to `codex/live-quota-v1`.
-2. Open a PR against `main`, wait for checks, and merge only the reviewed SHA.
-3. Confirm Vercel production points at the merged SHA.
-4. Configure private Blob and the three production values without exposing them.
-5. POST one synthetic normalized snapshot and verify a protected production PNG.
-6. Install and diagnose the real Windows collector.
-7. Synchronize the Kindle extension and private dashboard URL.
-8. On Kindle, run Display Test Frame, Cached Dashboard, live refresh, and a full
+1. [x] Publish the exact reviewed snapshot to `codex/live-quota-v1`.
+2. [x] Open PR #4 against `main`, verify the Vercel check, and merge the fixed
+   head SHA.
+3. [x] Confirm the merge commit has a successful Vercel deployment status.
+4. [ ] Configure private Blob and the three production values without exposing
+   them, then directly verify the production URL.
+5. [ ] POST one synthetic normalized snapshot and verify a protected production
+   PNG plus 401 responses for invalid view and ingest credentials.
+6. [ ] Inspect/quarantine the stale local collector directory if needed, then
+   install and diagnose the real Windows collector.
+7. [x] Synchronize reviewed Kindle scripts while preserving private `env.sh`;
+   [ ] add the final view key only after production auth is verified.
+8. [ ] On Kindle, run Display Test Frame, Cached Dashboard, live refresh, and a full
    13-minute cycle (initial refresh plus one 12-minute scheduled refresh).
-9. Confirm the device remains responsive, battery percentage changes correctly,
+9. [ ] Confirm the device remains responsive, battery percentage changes correctly,
    no native Kindle UI overlays the image, and Stop Dashboard restores the UI.
 
 The Vercel CLI bootstrap attempt in this sandbox could not reach the npm registry
@@ -306,11 +336,11 @@ terminal for Vercel-only operations if the CLI remains unavailable.
 
 ## Not Yet Complete
 
-- GitHub branch publication, PR checks, and merge evidence.
-- Vercel production SHA and deployment health evidence.
-- Private Blob/token configuration and synthetic production ingest.
+- Direct production endpoint response and deployed-source confirmation beyond the
+  successful merge-commit Vercel status.
+- Private Blob/token configuration and synthetic production ingest/auth checks.
 - Real Claude/Codex collector installation and first successful upload.
-- Final Kindle file synchronization and 13-minute acceptance.
+- Final Kindle private view-key update, physical eject, and 13-minute acceptance.
 - Public v1.0.0 tag/release.
 
 ## Later Optimizations
@@ -352,7 +382,8 @@ GitHub branch/PR SHA, check status, and Vercel production SHA separately.
 
 ## Release Decision
 
-The source release candidate is independently approved and locally ready for
-publication. The project is not yet a completed public v1 or a completed
-real-device live-quota installation until Task 8's GitHub, Vercel, collector, and
-Kindle evidence is recorded.
+The source is independently approved, merged to GitHub `main`, and accepted by
+the merge-commit Vercel build. The reviewed Kindle scripts are synchronized. The
+project is not yet a completed public v1 or a completed real-device live-quota
+installation until private Vercel configuration, direct production/auth smoke,
+collector installation, and the unplugged 13-minute Kindle cycle are recorded.
