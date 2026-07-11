@@ -1,8 +1,13 @@
 #!/usr/bin/env sh
 
+# DASHBOARD_URL may contain a query credential, so this helper never uses xtrace.
+case $- in
+  *x*) set +x ;;
+esac
+
 DIR="$(cd "$(dirname "$0")" && pwd)"
 OUT="$1"
-URL=${DASHBOARD_URL:-"https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&claude=true&openai=true&gemini=false"}
+URL=${DASHBOARD_URL:-"https://your-project.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&claude=true&openai=true&gemini=false"}
 
 # shellcheck disable=SC1091
 . "$DIR/dashboard-utils.sh"
@@ -26,7 +31,7 @@ fi
 echo "fetch-dashboard: fetching dashboard PNG"
 
 if command -v wget >/dev/null 2>&1; then
-  wget -q -O "$TMP" "$FETCH_URL" || wget --no-check-certificate -q -O "$TMP" "$FETCH_URL"
+  wget -q -O "$TMP" "$FETCH_URL"
 elif [ -x "$(dirname "$0")/../xh" ]; then
   "$(dirname "$0")/../xh" -d -q -o "$TMP" get "$FETCH_URL"
 elif [ -x "$(dirname "$0")/../ht" ]; then

@@ -10,8 +10,22 @@ DISPLAY_ONCE_CMD="$DIR/local/display-once.sh"
 LOW_BATTERY_CMD="$DIR/local/low-battery.sh"
 RTC=${RTC:-/sys/devices/platform/mxc_rtc.0/wakeup_enable}
 
+dash_xtrace_enabled=false
+case $- in
+  *x*)
+    dash_xtrace_enabled=true
+    set +x
+    ;;
+esac
+
 # shellcheck disable=SC1090
 [ -f "$ENV_FILE" ] && . "$ENV_FILE"
+
+if [ "$dash_xtrace_enabled" = true ]; then
+  set -x
+fi
+unset dash_xtrace_enabled
+
 . "$DIR/local/dashboard-utils.sh"
 
 num_refresh=0

@@ -1,4 +1,9 @@
 .next/
+.vercel/
+artifacts/
 node_modules/
 npm-debug.log*
 *.tsbuildinfo
+.env
+.env.*
+!.env.example
