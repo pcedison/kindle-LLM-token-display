@@ -145,10 +145,63 @@ function Test-ScheduledTaskExists {
     }
 }
 
+function New-CollectorTaskXml {
+    param([string]$Executable, [string]$Arguments)
+    $service = $null
+    $definition = $null
+    $trigger = $null
+    $action = $null
+    try {
+        $service = New-Object -ComObject 'Schedule.Service'
+        $service.Connect()
+        $definition = $service.NewTask(0)
+        $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+
+        $definition.RegistrationInfo.Description = 'Uploads sanitized Claude Code and Codex quota windows.'
+        $definition.Principal.UserId = $identity
+        $definition.Principal.LogonType = 3
+        $definition.Principal.RunLevel = 0
+        $definition.Settings.Enabled = $true
+        $definition.Settings.StartWhenAvailable = $true
+        $definition.Settings.DisallowStartIfOnBatteries = $false
+        $definition.Settings.StopIfGoingOnBatteries = $false
+        $definition.Settings.MultipleInstances = 2
+        $definition.Settings.ExecutionTimeLimit = 'PT2M'
+
+        $trigger = $definition.Triggers.Create(1)
+        $trigger.StartBoundary = (Get-Date).AddMinutes(1).ToString('yyyy-MM-ddTHH:mm:ss')
+        $trigger.Enabled = $true
+        $trigger.Repetition.Interval = 'PT5M'
+        $trigger.Repetition.StopAtDurationEnd = $false
+
+        $action = $definition.Actions.Create(0)
+        $action.Path = $Executable
+        $action.Arguments = $Arguments
+        return [string]$definition.XmlText
+    }
+    catch {
+        throw 'Unable to create collector task definition'
+    }
+    finally {
+        if ($action) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($action) }
+        if ($trigger) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($trigger) }
+        if ($definition) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($definition) }
+        if ($service) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($service) }
+    }
+}
+
 function Get-ScheduledTaskAction {
     param([string]$Name, [switch]$RequireReliableAbsence)
-    $taskXmlText = (& schtasks.exe /Query /TN $Name /XML 2>$null | Out-String)
-    if ($LASTEXITCODE -ne 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $taskXmlText = (& schtasks.exe /Query /TN $Name /XML 2>$null | Out-String)
+        $taskQueryExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($taskQueryExitCode -ne 0) {
         if ($RequireReliableAbsence -and (Test-ScheduledTaskExists -Name $Name)) { throw 'Unable to inspect scheduled task action' }
         return $null
     }
@@ -263,6 +316,7 @@ $newInstallStarted = $false
 $taskRegistrationAttempted = $false
 $taskRollbackFailed = $false
 $backupCreatedThisRun = $false
+$taskXmlPath = $null
 try {
     if (-not $previousManifest -and $settingsExisted) {
         Copy-Item -LiteralPath $ClaudeSettingsPath -Destination $backupPath
@@ -327,11 +381,21 @@ try {
     $settingsMutationStarted = $true
     Write-JsonAtomic -Path $ClaudeSettingsPath -Value $settings
 
-    $taskCommand = '"{0}" {1}' -f $nodePath, $taskArguments
     if (-not $taskExistedBefore) {
         $taskRegistrationAttempted = $true
-        & schtasks.exe /Create /SC MINUTE /MO 5 /TN $TaskName /TR $taskCommand | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw 'Unable to register collector task' }
+        $taskXmlPath = Join-Path $env:TEMP ("kindle-llm-task-$([Guid]::NewGuid().ToString('N')).xml")
+        $taskXml = New-CollectorTaskXml -Executable $nodePath -Arguments $taskArguments
+        [IO.File]::WriteAllText($taskXmlPath, $taskXml, [Text.Encoding]::Unicode)
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            & schtasks.exe /Create /TN $TaskName /XML $taskXmlPath 2>$null | Out-Null
+            $taskCreateExitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+        if ($taskCreateExitCode -ne 0) { throw 'Unable to register collector task' }
     }
 
     if ($installBackup -and (Test-Path -LiteralPath $installBackup)) {
@@ -389,6 +453,7 @@ finally {
     if ($bstr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
     $plainToken = $null
     $secureToken = $null
+    if ($taskXmlPath -and (Test-Path -LiteralPath $taskXmlPath)) { Remove-Item -LiteralPath $taskXmlPath -Force -ErrorAction SilentlyContinue }
     if ($settingsRollbackPath -and (Test-Path -LiteralPath $settingsRollbackPath)) { Remove-Item -LiteralPath $settingsRollbackPath -Force -ErrorAction SilentlyContinue }
 }
 

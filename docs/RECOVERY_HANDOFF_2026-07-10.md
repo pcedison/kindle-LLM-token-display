@@ -8,15 +8,16 @@ Production URL: intentionally not tracked; obtain it from the Vercel project.
 
 The interrupted source work was recovered without evidence of corruption. Tasks 1
 through 7 are implemented in the recovery clone and the final independent review
-is approved. The current release candidate passes 133 tests, a Next.js production
+is approved. The current release candidate passes 140 tests, a Next.js production
 build, shell and PowerShell syntax checks, a local production HTTP PNG smoke test,
 and a two-platform pull-request CI definition.
 
-GitHub publication, PR merge, the merge-commit Vercel build, and mounted-Kindle
-script synchronization are complete. Remaining external work is private Vercel
-Blob/secret configuration, a direct production PNG smoke test, real Windows
-collector installation, and an unplugged 13-minute device acceptance cycle. These
-steps must not be described as complete until their evidence is recorded below.
+GitHub publication, prior PR merges, the private Vercel Blob rollout, real
+Windows collector installation, signed live upload, direct production PNG smoke,
+and mounted-Kindle script synchronization are complete. PR #9 contains the
+real-machine Task Scheduler fixes and is awaiting final merge/check evidence.
+The remaining external acceptance is the unplugged Kindle refresh and recovery
+cycle; do not call the deployment stable v1 until that physical check passes.
 
 ## Canonical Paths And Branches
 
@@ -392,37 +393,111 @@ If the watcher does not fire, SSH `stop.sh` or a reboot restores process signal
 state; do not describe this hotfix as device-accepted until that test is
 recorded.
 
+## 2026-07-11 Live Collector Production Rollout
+
+### Provider clients and authentication
+
+- Node.js 24 and Claude Code 2.1.207 were present. Claude reported an active
+  subscription/OAuth-style login; no identity or credential value was recorded.
+- The Codex desktop package exposed a bundled executable on `PATH`, but Windows
+  denied direct command-line execution of that packaged file. The official
+  Codex CLI 0.144.1 was installed separately and reused the existing ChatGPT
+  login. A direct `account/rateLimits/read` probe returned both approved window
+  shapes without printing their values.
+- No Anthropic or OpenAI API key was added. Subscription 5-hour and 7-day quota
+  windows come only from the signed-in official clients.
+
+### Vercel and storage
+
+- The local checkout was linked to the existing Vercel project with the official
+  CLI. A private Blob store was created and connected to Production, Preview,
+  and Development.
+- A random production `DASHBOARD_INGEST_TOKEN` was generated in memory, shared
+  only with Vercel and the ACL-protected Windows config, and then cleared.
+  `DASHBOARD_VIEW_TOKEN` remains intentionally unset, so the current Kindle URL
+  does not need a private query key.
+- Six manual Claude/Codex fixture variables were removed from Production after
+  the first real upload; Preview retains them for demo/testing use.
+- An invalid ingest bearer returned 401. The live dashboard returned 200,
+  `image/png`, and `Cache-Control: no-store`; the downloaded file was exactly
+  758x1024, opaque 8-bit grayscale, and non-interlaced.
+
+### Real installer failures and fixes
+
+The first real install exposed two Windows behaviors that the mocked harnesses
+did not reproduce:
+
+1. A normal missing-task `schtasks /Query` writes to the PowerShell error stream.
+   With global `ErrorActionPreference = Stop`, installation terminated before
+   it could inspect the expected nonzero exit code.
+2. The `/TR` command string was split at the space in `C:\Program Files`, so
+   Task Scheduler received `Files\nodejs\node.exe ...` instead of the Node
+   executable and separate arguments.
+
+The fix temporarily relaxes the error preference only around native task
+queries/creation while still requiring exact exit codes. Task registration now
+uses a Task Scheduler COM definition serialized to temporary XML and passed to
+non-forcing `schtasks /Create /XML`. Its action stores the executable and
+arguments separately, uses an interactive-token principal, ignores overlapping
+runs, and repeats every five minutes with `PT5M`; the omitted duration means
+indefinite repetition. The temporary XML contains no ingest token and is removed
+in `finally`.
+
+Two Windows PowerShell regressions were observed failing before implementation
+and passing afterward. Final verification is 16/16 focused Windows collector
+tests, 140/140 full tests, a successful Next.js production build, and a real
+Task Scheduler query proving exact executable/argument matches, indefinite
+five-minute repetition, an enabled task, a successful automatic last run, and a
+future next run.
+
+### Installed live state
+
+- The stale test-only local collector directory was moved intact to a timestamped
+  quarantine before installation.
+- The protected config and manifest, Claude status-line integration,
+  manifest-owned GUID task, Claude spool, and successful last-upload marker all
+  exist.
+- A manual first cycle and the subsequent scheduled cycle succeeded. Production
+  now renders live Claude Code and Codex 5-hour and 7-day windows from private
+  Blob. Only normalized percentages, reset epochs, provider timestamps, and the
+  global collection time were uploaded.
+- Fix commit `d0984a1` is published on `codex/windows-live-collector`; ready PR
+  #9 targets `main`. Record final CI, merge SHA, and Vercel merge deployment below
+  before treating publication as complete.
+
 ## Task 8: Pending External Rollout
 
 1. [x] Publish the exact reviewed snapshot to `codex/live-quota-v1`.
 2. [x] Open PR #4 against `main`, verify the Vercel check, and merge the fixed
    head SHA.
 3. [x] Confirm the merge commit has a successful Vercel deployment status.
-4. [ ] Configure private Blob and the three production values without exposing
-   them, then directly verify the production URL.
-5. [ ] POST one synthetic normalized snapshot and verify a protected production
-   PNG plus 401 responses for invalid view and ingest credentials.
-6. [ ] Inspect/quarantine the stale local collector directory if needed, then
-   install and diagnose the real Windows collector.
-7. [x] Synchronize reviewed Kindle scripts while preserving private `env.sh`;
-   [ ] add the final view key only after production auth is verified.
+4. [x] Configure private Blob and the required production ingest value without
+   exposing it, then directly verify the production URL. View protection remains
+   an intentional optional follow-up.
+5. [x] POST a real normalized snapshot, verify the production PNG, and confirm
+   a wrong ingest bearer returns 401. View auth is not applicable while the
+   optional view token is unset.
+6. [x] Quarantine the stale local collector directory, then install, diagnose,
+   and observe an automatic successful run of the real Windows collector.
+7. [x] Synchronize reviewed Kindle scripts while preserving private `env.sh`.
+   No view key is currently required because view protection is intentionally
+   unset.
 8. [ ] On Kindle, run Display Test Frame, Cached Dashboard, live refresh, and a full
    13-minute cycle (initial refresh plus one 12-minute scheduled refresh).
 9. [ ] Confirm the device remains responsive, battery percentage changes correctly,
    no native Kindle UI overlays the image, and Stop Dashboard restores the UI.
 
-The Vercel CLI bootstrap attempt in this sandbox could not reach the npm registry
-and failed with an access/network error. This is an execution-environment blocker,
-not a project build failure. Use the connected browser session or a normal local
-terminal for Vercel-only operations if the CLI remains unavailable.
+The official Vercel CLI is now installed, authenticated, and linked to the
+production project. It created/connected private Blob, managed environment names
+without reading secret values, and completed production redeploys.
 
 ## Not Yet Complete
 
-- Direct production endpoint response and deployed-source confirmation beyond the
-  successful merge-commit Vercel status.
-- Private Blob/token configuration and synthetic production ingest/auth checks.
-- Real Claude/Codex collector installation and first successful upload.
-- Final Kindle private view-key update, physical eject, and 13-minute acceptance.
+- PR #9 CI, merge SHA, and Vercel deployment evidence for the real-machine
+  installer fixes.
+- Physical eject, native-chrome acceptance, and one complete 13-minute Kindle
+  cycle (initial draw plus one 12-minute refresh).
+- Optional dashboard view protection and matching private Kindle URL.
 - Public v1.0.0 tag/release.
 
 ## Later Optimizations
@@ -463,6 +538,5 @@ The source is independently approved, merged to GitHub `main`, licensed under
 MIT, documented, and accepted by the merge-commit Vercel build. The reviewed
 Kindle scripts are synchronized. It is suitable to publish as an open-source beta
 or release candidate. It must not yet be described as a stable production v1 or
-a completed real-device live-quota installation until private Vercel
-configuration, direct production/auth smoke, collector installation, and the
-unplugged 13-minute Kindle cycle are recorded.
+a completed real-device live-quota installation until PR #9 is merged/deployed
+and the unplugged 13-minute Kindle cycle plus native-UI recovery are recorded.

@@ -135,8 +135,16 @@ function Test-ScheduledTaskExists {
 
 function Get-ScheduledTaskAction {
     param([string]$Name, [switch]$RequireReliableAbsence)
-    $taskXmlText = (& schtasks.exe /Query /TN $Name /XML 2>$null | Out-String)
-    if ($LASTEXITCODE -ne 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $taskXmlText = (& schtasks.exe /Query /TN $Name /XML 2>$null | Out-String)
+        $taskQueryExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($taskQueryExitCode -ne 0) {
         if (-not $RequireReliableAbsence) { return $null }
         if (Test-ScheduledTaskExists -Name $Name) { throw 'Unable to inspect scheduled task action; refusing unsafe removal' }
         return $null
