@@ -337,6 +337,22 @@ test('ships the diagnostic and low-power probe actions without enabling RTC by d
   assert.match(env, /DASHBOARD_USE_RTC=.*false/);
 });
 
+test('queues the cached dashboard draw after the KUAL action returns', () => {
+  const menu = JSON.parse(
+    readFileSync(join(process.cwd(), 'kindle-extension', 'menu.json'), 'utf8'),
+  );
+  const cachedItem = menu.items.find((item) => item.name === 'Display Cached Dashboard');
+  assert.equal(cachedItem?.action, './display-cached.sh');
+
+  const launcher = readFileSync(
+    join(process.cwd(), 'kindle-extension', 'display-cached.sh'),
+    'utf8',
+  );
+  assert.match(launcher, /local\/display-once\.sh/);
+  assert.match(launcher, /nohup/);
+  assert.match(launcher, /&/);
+});
+
 test('keeps RTC refresh opt-in and falls back to a full userspace sleep', () => {
   const env = readFileSync(join(process.cwd(), 'kindle-extension', 'local', 'env.sh'), 'utf8');
   const dash = readFileSync(join(process.cwd(), 'kindle-extension', 'dash.sh'), 'utf8');
