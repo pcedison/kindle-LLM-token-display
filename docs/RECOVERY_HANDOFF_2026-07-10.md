@@ -14,10 +14,10 @@ and a two-platform pull-request CI definition.
 
 GitHub publication, prior PR merges, the private Vercel Blob rollout, real
 Windows collector installation, signed live upload, direct production PNG smoke,
-and mounted-Kindle script synchronization are complete. PR #9 contains the
-real-machine Task Scheduler fixes and is awaiting final merge/check evidence.
-The remaining external acceptance is the unplugged Kindle refresh and recovery
-cycle; do not call the deployment stable v1 until that physical check passes.
+mounted-Kindle script synchronization, and the PR #9 Task Scheduler fixes are
+complete. The remaining external acceptance is the unplugged Kindle refresh and
+recovery cycle; do not call the deployment stable v1 until that physical check
+passes.
 
 ## Canonical Paths And Branches
 
@@ -461,16 +461,21 @@ future next run.
   now renders live Claude Code and Codex 5-hour and 7-day windows from private
   Blob. Only normalized percentages, reset epochs, provider timestamps, and the
   global collection time were uploaded.
-- Fix commit `d0984a1` is published on `codex/windows-live-collector`; ready PR
-  #9 targets `main`. Record final CI, merge SHA, and Vercel merge deployment below
-  before treating publication as complete.
+- Fix commit `d0984a1` plus rollout handoff commit `5331eef` were published on
+  `codex/windows-live-collector`. PR #9 passed Windows test/build, Kindle shell
+  syntax, and Vercel checks, then squash-merged as
+  `d3fc282a33ec26ea89b2f82efff5e352ab018090`.
+- The merge commit's Vercel status is successful. Production deployment
+  `dpl_BBfzu7TMP3ima6cx1eYhkCx1Vsmq` is Ready and owns the canonical production
+  alias.
 
 ## Task 8: Pending External Rollout
 
 1. [x] Publish the exact reviewed snapshot to `codex/live-quota-v1`.
 2. [x] Open PR #4 against `main`, verify the Vercel check, and merge the fixed
    head SHA.
-3. [x] Confirm the merge commit has a successful Vercel deployment status.
+3. [x] Confirm the initial release merge and PR #9 merge commits have successful
+   Vercel deployment status.
 4. [x] Configure private Blob and the required production ingest value without
    exposing it, then directly verify the production URL. View protection remains
    an intentional optional follow-up.
@@ -493,8 +498,6 @@ without reading secret values, and completed production redeploys.
 
 ## Not Yet Complete
 
-- PR #9 CI, merge SHA, and Vercel deployment evidence for the real-machine
-  installer fixes.
 - Physical eject, native-chrome acceptance, and one complete 13-minute Kindle
   cycle (initial draw plus one 12-minute refresh).
 - Optional dashboard view protection and matching private Kindle URL.
@@ -538,5 +541,5 @@ The source is independently approved, merged to GitHub `main`, licensed under
 MIT, documented, and accepted by the merge-commit Vercel build. The reviewed
 Kindle scripts are synchronized. It is suitable to publish as an open-source beta
 or release candidate. It must not yet be described as a stable production v1 or
-a completed real-device live-quota installation until PR #9 is merged/deployed
-and the unplugged 13-minute Kindle cycle plus native-UI recovery are recorded.
+a completed real-device live-quota installation until the unplugged 13-minute
+Kindle cycle plus native-UI recovery are recorded.
