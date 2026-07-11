@@ -3,7 +3,7 @@
     {"name": "Start LLM Token Dashboard", "action": "./start.sh"},
     {"name": "Refresh Dashboard Now", "action": "./refresh-now.sh"},
     {"name": "Display Test Frame", "action": "./local/display-test-frame.sh"},
-    {"name": "Display Cached Dashboard", "action": "./local/display-once.sh"},
+    {"name": "Display Cached Dashboard", "action": "./display-cached.sh"},
     {"name": "Low Power Test (60 sec)", "action": "./low-power-test.sh"},
     {"name": "Stop Dashboard / Restore Kindle", "action": "./stop.sh"},
     {"name": "Write Dashboard Status Log", "action": "./diagnose.sh"}
