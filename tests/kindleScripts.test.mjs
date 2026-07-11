@@ -5,7 +5,8 @@ import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 
-const shell = process.platform === 'win32' ? 'bash.exe' : 'sh';
+const gitBash = join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'bin', 'bash.exe');
+const shell = process.platform === 'win32' && existsSync(gitBash) ? gitBash : 'sh';
 const shellFlag = process.platform === 'win32' ? '-lc' : '-c';
 
 function runShell(command, { allowFailure = false } = {}) {

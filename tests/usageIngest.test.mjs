@@ -60,6 +60,24 @@ test('rejects a declared body larger than 8192 bytes before reading it', async (
   assert.equal(await response.text(), 'Payload Too Large');
 });
 
+test('accepts a valid body of exactly 8192 bytes', async () => {
+  const json = JSON.stringify(validSnapshot);
+  const body = json + ' '.repeat(8192 - Buffer.byteLength(json));
+  const writes = [];
+  assert.equal(Buffer.byteLength(body), 8192);
+
+  const response = await handleUsageIngest(
+    makeRequest(body, { contentLength: 8192 }),
+    createDependencies({ writeMergedQuotaSnapshot: async (snapshot) => {
+      writes.push(snapshot);
+      return snapshot;
+    } }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(writes.length, 1);
+});
+
 test('rejects an actual body larger than 8192 bytes', async () => {
   const response = await handleUsageIngest(
     makeRequest(' '.repeat(8193)),

@@ -1,5 +1,7 @@
 # Kindle LLM Token Dashboard
 
+[![CI](https://github.com/pcedison/kindle-LLM-token-display/actions/workflows/ci.yml/badge.svg)](https://github.com/pcedison/kindle-LLM-token-display/actions/workflows/ci.yml)
+
 A low-power, portrait e-ink dashboard for Claude Code and Codex subscription quota windows. Vercel renders an opaque grayscale PNG; a jailbroken Kindle downloads it and draws it with `eips`. Provider credentials remain inside the official local clients.
 
 ![DP75SDI dashboard](docs/images/dashboard-dp75sdi.png)

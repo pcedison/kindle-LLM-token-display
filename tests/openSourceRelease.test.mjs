@@ -19,6 +19,7 @@ const publicTextFiles = trackedFiles.filter((path) => {
   return path === 'README.md'
     || path === '.env.example'
     || path === '.gitignore'
+    || path.startsWith('.github/')
     || path.startsWith('app/')
     || path.startsWith('collector/')
     || path.startsWith('docs/')
@@ -32,6 +33,30 @@ test('ships an MIT license and public documentation set', () => {
   for (const file of ['docs/SECURITY.md', 'docs/ARCHITECTURE.md', 'docs/WINDOWS-COLLECTOR.md', 'docs/VERCEL-SETUP.md']) {
     assert.ok(existsSync(new URL(`../${file}`, import.meta.url)), `${file} must exist`);
   }
+});
+
+test('ships pull-request CI for Windows behavior and Kindle shell syntax', () => {
+  const workflowPath = '.github/workflows/ci.yml';
+  assert.ok(existsSync(new URL(`../${workflowPath}`, import.meta.url)), `${workflowPath} must exist`);
+  const workflow = read(workflowPath);
+  assert.match(workflow, /pull_request:/);
+  assert.match(workflow, /push:/);
+  assert.match(workflow, /windows-latest/);
+  assert.match(workflow, /ubuntu-latest/);
+  assert.match(workflow, /actions\/checkout@v6/);
+  assert.match(workflow, /actions\/setup-node@v6/);
+  assert.match(workflow, /npm ci/);
+  assert.match(workflow, /npm test/);
+  assert.match(workflow, /npm run build/);
+  assert.match(workflow, /bash -n/);
+});
+
+test('declares ESM consistently without a module reparse warning', () => {
+  const packageJson = JSON.parse(read('package.json'));
+  assert.equal(packageJson.type, 'module');
+  assert.ok(existsSync(new URL('../next.config.mjs', import.meta.url)));
+  assert.equal(existsSync(new URL('../next.config.js', import.meta.url)), false);
+  assert.match(read('next.config.mjs'), /export default nextConfig/);
 });
 
 test('public defaults contain no owner-specific deployment or identity', () => {
@@ -92,6 +117,7 @@ test('README links setup, security, architecture, collector, RTC, and preview', 
     'docs/ARCHITECTURE.md', 'docs/superpowers/specs/2026-07-10-kindle-battery-low-power-design.md',
     'docs/images/dashboard-dp75sdi.png',
   ]) assert.ok(readme.includes(link), link);
+  assert.match(readme, /actions\/workflows\/ci\.yml\/badge\.svg/);
   assert.match(readme, /Kindle LLM Quota Uploader-<GUID>/);
   assert.match(windowsCollector, /manifest-owned GUID task/);
   assert.ok(existsSync(new URL('../docs/images/dashboard-dp75sdi.png', import.meta.url)));
