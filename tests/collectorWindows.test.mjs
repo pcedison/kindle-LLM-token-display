@@ -65,12 +65,11 @@ test('installer uses a protected per-user config and token-free five-minute task
   assert.match(install, /icacls\.exe/i);
   assert.match(install, /LASTEXITCODE/);
   assert.match(install, /Kindle LLM Quota Uploader/);
-  assert.match(install, /\/SC\s+MINUTE/i);
-  assert.match(install, /\/MO\s+5/i);
+  assert.match(install, /PT5M/i);
+  assert.match(install, /NewTask\(0\)/i);
+  assert.match(install, /schtasks\.exe\s+\/Create[^\r\n]+\/XML\s+\$taskXmlPath/i);
+  assert.doesNotMatch(install, /schtasks\.exe\s+\/Create[^\r\n]+\/TR/i);
 
-  const taskCommand = install.match(/\$taskCommand\s*=\s*[^\r\n]+/)?.[0] || '';
-  assert.doesNotMatch(taskCommand, /token|authorization|bearer|secret/i);
-  assert.doesNotMatch(taskCommand, /\\"/);
   assert.doesNotMatch(install, /DASHBOARD_INGEST_TOKEN/);
   assert.match(install, /catch\s*\{[\s\S]*Remove-Item\s+-LiteralPath\s+\$InstallRoot/i);
   assert.match(install, /schtasks\.exe\s+\/Delete\s+\/TN\s+\$TaskName/i);
@@ -185,6 +184,108 @@ test('uninstaller ends an owned task before deleting it and tolerates only a sto
   assert.ok(actionChecks.at(-1) > endAt && actionChecks.at(-1) < deleteAt, 'second action check must be after /End and before /Delete');
   assert.match(uninstall, /Test-ScheduledTaskRunning\s+-Name\s+\$TaskName/i);
   assert.match(uninstall, /Unable to stop collector task/i);
+});
+
+test('installer tolerates native task-query stderr when a new task is absent', () => {
+  const installPath = psQuote(fileURLToPath(files.install));
+  const result = runPowerShellHarness((root) => `
+$ErrorActionPreference = 'Stop'
+$env:LOCALAPPDATA = ${psQuote(join(root, 'local'))}
+$env:USERPROFILE = ${psQuote(join(root, 'profile'))}
+$installRoot = Join-Path $env:LOCALAPPDATA 'KindleLLMDashboard'
+$nodePath = (Get-Command node.exe -ErrorAction Stop).Source
+$global:taskCalls = @()
+$global:createdExecutable = $null
+$global:createdArguments = $null
+function global:schtasks.exe {
+    $global:taskCalls += ($args -join ' ')
+    if ($args -contains '/Query') {
+        $global:LASTEXITCODE = 1
+        Write-Error 'ERROR: The system cannot find the file specified.'
+        return
+    }
+    if ($args -contains '/Create') {
+        $xmlIndex = [Array]::IndexOf($args, '/XML')
+        if ($xmlIndex -lt 0 -or $xmlIndex + 1 -ge $args.Count) {
+            $global:LASTEXITCODE = 1
+            return
+        }
+        [xml]$taskXml = [IO.File]::ReadAllText([string]$args[$xmlIndex + 1])
+        $global:createdExecutable = [string]$taskXml.Task.Actions.Exec.Command
+        $global:createdArguments = [string]$taskXml.Task.Actions.Exec.Arguments
+    }
+    $global:LASTEXITCODE = 0
+}
+function global:icacls.exe { $global:LASTEXITCODE = 0 }
+function global:Read-Host {
+    param([string]$Prompt, [switch]$AsSecureString)
+    return ConvertTo-SecureString 'fixture-token-value' -AsPlainText -Force
+}
+
+& ${installPath} -IngestUrl 'https://example.test/api/usage' | Out-Null
+[pscustomobject]@{
+    installRootExists = Test-Path -LiteralPath $installRoot
+    createdTask = [bool]($global:taskCalls | Where-Object { $_ -match '/Create' })
+    executableMatches = [StringComparer]::OrdinalIgnoreCase.Equals($global:createdExecutable, $nodePath)
+    argumentsContainUpload = $global:createdArguments -match 'upload\.mjs'
+    argumentsContainConfig = $global:createdArguments -match 'config\.json'
+} | ConvertTo-Json -Compress
+`);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.observation?.installRootExists, true);
+  assert.equal(result.observation?.createdTask, true);
+  assert.equal(result.observation?.executableMatches, true);
+  assert.equal(result.observation?.argumentsContainUpload, true);
+  assert.equal(result.observation?.argumentsContainConfig, true);
+  assert.doesNotMatch(result.stdout + result.stderr, /fixture-token-value/);
+});
+
+test('uninstaller tolerates native task-query stderr after an owned task is already absent', () => {
+  const uninstallPath = psQuote(fileURLToPath(files.uninstall));
+  const result = runPowerShellHarness((root) => `
+$ErrorActionPreference = 'Stop'
+$env:LOCALAPPDATA = ${psQuote(join(root, 'local'))}
+$env:USERPROFILE = ${psQuote(join(root, 'profile'))}
+$installRoot = Join-Path $env:LOCALAPPDATA 'KindleLLMDashboard'
+$collectorRoot = Join-Path $installRoot 'collector'
+$settingsPath = Join-Path (Join-Path $env:USERPROFILE '.claude') 'settings.json'
+$manifestPath = Join-Path $installRoot 'install-manifest.json'
+$nodePath = (Get-Command node.exe -ErrorAction Stop).Source
+$statusLineCommand = '"{0}" "{1}"' -f $nodePath, (Join-Path $collectorRoot 'claude-statusline.mjs')
+$taskArguments = '"{0}" "{1}"' -f (Join-Path $collectorRoot 'upload.mjs'), (Join-Path $installRoot 'config.json')
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $settingsPath) | Out-Null
+New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+[IO.File]::WriteAllText($settingsPath, ([ordered]@{
+    theme = 'dark'
+    statusLine = [ordered]@{ type = 'command'; command = $statusLineCommand; padding = 0 }
+} | ConvertTo-Json -Depth 20))
+[IO.File]::WriteAllText($manifestPath, ([ordered]@{
+    schemaVersion = 2
+    owner = 'kindle-llm-dash/windows-collector'
+    taskName = 'Kindle LLM Quota Uploader-89abcdef0123456789abcdef01234567'
+    installRoot = $installRoot
+    claudeSettingsPath = $settingsPath
+    backupPath = $null
+    statusLineCommand = $statusLineCommand
+    taskAction = [ordered]@{ executable = $nodePath; arguments = $taskArguments }
+} | ConvertTo-Json -Depth 20))
+function global:schtasks.exe {
+    $global:LASTEXITCODE = 1
+    Write-Error 'ERROR: The system cannot find the file specified.'
+}
+
+& ${uninstallPath} | Out-Null
+$settings = [IO.File]::ReadAllText($settingsPath) | ConvertFrom-Json
+[pscustomobject]@{
+    installRootExists = Test-Path -LiteralPath $installRoot
+    statusLinePresent = [bool]$settings.PSObject.Properties['statusLine']
+} | ConvertTo-Json -Compress
+`);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.observation?.installRootExists, false);
+  assert.equal(result.observation?.statusLinePresent, false);
 });
 
 test('reinstall keeps the first backup and uninstall restores it', () => {
