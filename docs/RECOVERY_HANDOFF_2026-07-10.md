@@ -315,8 +315,82 @@ At the latest synchronized audit, `D:` was mounted and
   Physical eject, KUAL start, Wi-Fi fetch, and 13-minute refresh acceptance have
   not yet been run after this synchronization.
 
-Current sandbox policy permits reading `D:` but may reject writes. Do not claim
-the Kindle was updated unless hashes are re-read after a successful copy.
+The 2026-07-11 session successfully wrote and re-read the mounted Kindle. Future
+sessions must still verify hashes after every copy rather than assuming device
+state from repository state.
+
+## 2026-07-11 Native Chrome Overlay Fix
+
+### Symptom and root cause
+
+After `Start LLM Token Dashboard`, the rendered 758x1024 dashboard was correct,
+but a black native Kindle strip containing Wi-Fi, battery, and the stock clock
+appeared over the upper-right corner. This was not part of the Vercel PNG. The
+device log recorded successful full `eips` updates, and the mounted device
+reported `Kindle 5.12.2.2 (379151 038)` in
+`<KINDLE_DRIVE>:\system\version.txt`.
+
+The cause is the stock window stack redrawing after `eips`: Pillow owns the
+status bar, while firmware 5.7.2 and newer can still have the `awesome` window
+manager repaint the clock after Pillow is hidden. The implementation follows
+the reversible normal-framework strategy used by KOReader for this firmware
+family. It does not stop `framework`, `lab126_gui`, or `webreader`.
+
+### Implemented behavior
+
+- `local/chrome-control.sh` disables Pillow and sends `SIGSTOP` to `awesome`
+  when dashboard mode starts. Its restore path always sends `SIGCONT` and
+  re-enables Pillow, even if local settings changed after a failed run.
+- `dash.sh` waits for KUAL to close, hides native chrome, then draws the PNG.
+  An `EXIT` cleanup trap restores native chrome and clears
+  `preventScreenSaver`; HUP/INT/TERM exit through that cleanup.
+- `local/power-button-exit.sh` watches the official `powerd` events. Physical
+  button sources `goingToScreenSaver 2` and `outOfScreenSaver 1` terminate the
+  daemon; RTC wake events do not match. This provides a non-reboot escape: one
+  power-button press exits dashboard mode, and a second press is needed only if
+  the native sleep screen appears.
+- `stop.sh` independently restores `awesome` and Pillow, so SSH/KUAL recovery
+  remains idempotent. It intentionally does not source mutable `local/env.sh`,
+  so a malformed user configuration cannot block recovery.
+- Independent review found and fixed a stale-PID/process-leak risk in the first
+  watcher draft. The final watcher never signals a stored dashboard PID; it
+  invokes idempotent `stop.sh`, records the `lipc-wait-event` child separately,
+  validates command lines through `/proc` before parent-side cleanup, and uses
+  bounded forced termination rather than an unbounded wait.
+- A second review found that the legacy relative `./dash.sh` launch was not
+  guaranteed to match the Stop fallback. `start.sh` now launches an absolute
+  path, and both Start and Stop use `logs/dash.pid` plus command-line and cwd
+  ownership validation before signaling. The relative form is accepted only as
+  a cwd-constrained migration path for the already-installed older launcher.
+- Final independent re-review reported no remaining Critical or Important
+  findings.
+- Public defaults enable `HIDE_KINDLE_CHROME`,
+  `FREEZE_KINDLE_WINDOW_MANAGER`, and `POWER_BUTTON_RESTORES_KINDLE` while
+  retaining the full Kindle framework.
+
+### Verification and mounted-device state
+
+- The two new lifecycle tests were observed failing before implementation.
+- `npm.cmd test`: 138/138 passed.
+- `npm.cmd run build`: successful Next.js production build.
+- All repository and copied device shell scripts passed `sh -n`.
+- Updated on `<KINDLE_DRIVE>:\extensions\kindle-dash`: `dash.sh`, `start.sh`,
+  `stop.sh`, `local/dashboard-utils.sh`, `local/chrome-control.sh`, and
+  `local/power-button-exit.sh`.
+- `local/env.sh` was edited in place only to add the three chrome controls.
+  Its private dashboard URL, 720-second interval, and validated
+  `DASHBOARD_USE_RTC=true` value were preserved.
+- Backup:
+  `<KINDLE_DRIVE>:\extensions\kindle-dash\backups\pre-chrome-overlay-20260711-143000`.
+- SHA-256 comparison confirmed all six copied runtime files exactly matched
+  the reviewed local working tree.
+
+Physical acceptance remains pending: safely eject, run Start, confirm the
+stock black strip does not return through a refresh/suspend cycle, then press
+the power button once and again to verify dashboard exit and native UI restore.
+If the watcher does not fire, SSH `stop.sh` or a reboot restores process signal
+state; do not describe this hotfix as device-accepted until that test is
+recorded.
 
 ## Task 8: Pending External Rollout
 

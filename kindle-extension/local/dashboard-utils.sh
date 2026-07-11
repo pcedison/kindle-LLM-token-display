@@ -124,3 +124,45 @@ suspend_for_seconds() {
 
   printf 'mem\n' >"$power_state" || return 1
 }
+
+process_cmdline_contains() {
+  owned_process_pid=${1:-}
+  owned_process_name=${2:-}
+  owned_proc_root=${PROCESS_PROC_ROOT:-/proc}
+
+  case "$owned_process_pid" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+
+  [ -n "$owned_process_name" ] || return 1
+  [ -r "$owned_proc_root/$owned_process_pid/cmdline" ] || return 1
+  tr '\000' ' ' <"$owned_proc_root/$owned_process_pid/cmdline" 2>/dev/null |
+    grep -F -q "$owned_process_name"
+}
+
+process_cwd_matches() {
+  owned_process_pid=${1:-}
+  owned_expected_cwd=${2:-}
+  owned_proc_root=${PROCESS_PROC_ROOT:-/proc}
+
+  [ -n "$owned_expected_cwd" ] || return 0
+  owned_actual_cwd=$(readlink "$owned_proc_root/$owned_process_pid/cwd" 2>/dev/null) || return 1
+  [ "$owned_actual_cwd" = "$owned_expected_cwd" ]
+}
+
+signal_owned_process() {
+  owned_process_pid=${1:-}
+  owned_process_name=${2:-}
+  owned_signal=${3:-TERM}
+  owned_expected_cwd=${4:-}
+  owned_signal_cmd=${PROCESS_SIGNAL_CMD:-kill}
+
+  case "$owned_signal" in
+    TERM|KILL|INT|HUP|CONT|STOP) ;;
+    *) return 1 ;;
+  esac
+
+  process_cmdline_contains "$owned_process_pid" "$owned_process_name" || return 1
+  process_cwd_matches "$owned_process_pid" "$owned_expected_cwd" || return 1
+  "$owned_signal_cmd" "-$owned_signal" "$owned_process_pid"
+}

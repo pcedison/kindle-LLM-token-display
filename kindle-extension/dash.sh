@@ -8,6 +8,8 @@ DASH_PNG="$DIR/dash.png"
 FETCH_DASHBOARD_CMD="$DIR/local/fetch-dashboard.sh"
 DISPLAY_ONCE_CMD="$DIR/local/display-once.sh"
 LOW_BATTERY_CMD="$DIR/local/low-battery.sh"
+POWER_BUTTON_EXIT_CMD="$DIR/local/power-button-exit.sh"
+POWER_BUTTON_EVENT_PID_FILE="/tmp/kindle-dash-power-event-$$.pid"
 RTC=${RTC:-/sys/devices/platform/mxc_rtc.0/wakeup_enable}
 
 dash_xtrace_enabled=false
@@ -27,9 +29,63 @@ fi
 unset dash_xtrace_enabled
 
 . "$DIR/local/dashboard-utils.sh"
+. "$DIR/local/chrome-control.sh"
 
 num_refresh=0
 ui_stopped=false
+dashboard_cleanup_started=false
+power_button_watcher_pid=""
+
+stop_power_button_exit_watcher() {
+  signal_owned_process "$power_button_watcher_pid" power-button-exit.sh TERM >/dev/null 2>&1 || true
+
+  if [ -r "$POWER_BUTTON_EVENT_PID_FILE" ]; then
+    event_pid=$(cat "$POWER_BUTTON_EVENT_PID_FILE" 2>/dev/null)
+    signal_owned_process "$event_pid" lipc-wait-event KILL >/dev/null 2>&1 || true
+  fi
+
+  signal_owned_process "$power_button_watcher_pid" power-button-exit.sh KILL >/dev/null 2>&1 || true
+
+  if [ -n "$power_button_watcher_pid" ]; then
+    rm -f "/tmp/kindle-dash-power-$power_button_watcher_pid"
+  fi
+  rm -f "$POWER_BUTTON_EVENT_PID_FILE"
+}
+
+dashboard_cleanup() {
+  if [ "$dashboard_cleanup_started" = true ]; then
+    return 0
+  fi
+
+  dashboard_cleanup_started=true
+  restore_kindle_chrome
+  lipc-set-prop com.lab126.powerd preventScreenSaver 0 >/dev/null 2>&1 || true
+  stop_power_button_exit_watcher
+}
+
+dashboard_shutdown() {
+  exit 0
+}
+
+trap dashboard_cleanup EXIT
+trap dashboard_shutdown HUP INT TERM
+
+start_power_button_exit_watcher() {
+  if [ "${POWER_BUTTON_RESTORES_KINDLE:-true}" != true ]; then
+    echo "Physical power-button restore disabled."
+    return 0
+  fi
+
+  if ! command -v lipc-wait-event >/dev/null 2>&1; then
+    echo "Physical power-button restore unavailable: lipc-wait-event not found."
+    return 0
+  fi
+
+  rm -f "$POWER_BUTTON_EVENT_PID_FILE"
+  "$POWER_BUTTON_EXIT_CMD" "$DIR/stop.sh" "$POWER_BUTTON_EVENT_PID_FILE" &
+  power_button_watcher_pid=$!
+  echo "Physical power-button restore watcher started."
+}
 
 init() {
   echo "Starting LLM token dashboard."
@@ -37,6 +93,8 @@ init() {
   echo "Timezone: ${TIMEZONE:-not-set}."
 
   sleep "${KUAL_SETTLE_DELAY_SECS:-3}"
+  hide_kindle_chrome
+  start_power_button_exit_watcher
   echo powersave >/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || true
   lipc-set-prop com.lab126.powerd preventScreenSaver 1 >/dev/null 2>&1 || true
 }

@@ -84,6 +84,8 @@ Safely eject the Kindle and use KUAL in this order:
 
 The proven DP75SDI path keeps the Kindle framework running and does not clear the panel before `eips`. Leave `DASHBOARD_USE_RTC=false` until the 60-second probe records `WAKE_SUCCESS`. The staged RTC procedure is documented in the [DP75SDI battery and low-power design](docs/superpowers/specs/2026-07-10-kindle-battery-low-power-design.md).
 
+`Start LLM Token Dashboard` hides Pillow and pauses the `awesome` window manager after KUAL closes so the native Wi-Fi, battery, and clock bar cannot redraw over the PNG. Press the physical power button once to exit dashboard mode; if the native sleep screen appears, press it again to return to Kindle. `Stop Dashboard / Restore Kindle`, normal daemon exit, and termination also restore system chrome without stopping the Kindle framework.
+
 ## Display Behavior
 
 - Each provider shows independent 5-hour and 7-day remaining bars.
@@ -95,7 +97,7 @@ The proven DP75SDI path keeps the Kindle framework running and does not clear th
 
 ## Recovery
 
-If the panel appears stuck, run `Stop Dashboard / Restore Kindle` in KUAL. If needed, use `/mnt/us/extensions/kindle-dash/stop.sh` over SSH. A long power-button reboot is the last resort when KUAL and SSH are unavailable.
+If the panel appears stuck in dashboard mode, press the physical power button once to restore native chrome; if the sleep screen appears, press it again to return to Kindle. When the stock UI is available, `Stop Dashboard / Restore Kindle` in KUAL is also safe. If needed, run `/mnt/us/extensions/kindle-dash/stop.sh` over SSH. A long power-button reboot remains the last resort when the watcher, KUAL, and SSH are unavailable.
 
 For server or collector failures, use the runbooks in [Vercel setup](docs/VERCEL-SETUP.md) and [Windows collector](docs/WINDOWS-COLLECTOR.md). Removing the private Blob deletes the latest sanitized snapshot; it does not affect provider accounts.
 

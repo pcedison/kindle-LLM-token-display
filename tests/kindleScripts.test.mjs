@@ -353,6 +353,159 @@ test('queues the cached dashboard draw after the KUAL action returns', () => {
   assert.match(launcher, /&/);
 });
 
+test('hides and restores Kindle system chrome with reversible commands', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-chrome-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const capture = join(directory, 'commands.log');
+
+  writeFileSync(
+    join(directory, 'lipc-set-prop'),
+    '#!/usr/bin/env sh\nprintf \'lipc %s\\n\' "$*" >> "$CAPTURE"\n',
+  );
+  writeFileSync(
+    join(directory, 'killall'),
+    '#!/usr/bin/env sh\nprintf \'killall %s\\n\' "$*" >> "$CAPTURE"\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `chmod +x "$PWD/${fixture}/lipc-set-prop" "$PWD/${fixture}/killall"; PATH="$PWD/${fixture}:$PATH" CAPTURE="$PWD/${fixture}/commands.log" HIDE_KINDLE_CHROME=true FREEZE_KINDLE_WINDOW_MANAGER=true sh -c '. ./kindle-extension/local/chrome-control.sh; hide_kindle_chrome; restore_kindle_chrome'`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(readFileSync(capture, 'utf8').trim().split('\n'), [
+      'lipc com.lab126.pillow disableEnablePillow disable',
+      'killall -STOP awesome',
+      'killall -CONT awesome',
+      'lipc com.lab126.pillow disableEnablePillow enable',
+    ]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard lifecycle always restores Kindle system chrome', () => {
+  const env = readFileSync(join(process.cwd(), 'kindle-extension', 'local', 'env.sh'), 'utf8');
+  const dash = readFileSync(join(process.cwd(), 'kindle-extension', 'dash.sh'), 'utf8');
+  const start = readFileSync(join(process.cwd(), 'kindle-extension', 'start.sh'), 'utf8');
+  const stop = readFileSync(join(process.cwd(), 'kindle-extension', 'stop.sh'), 'utf8');
+
+  assert.match(env, /HIDE_KINDLE_CHROME=.*true/);
+  assert.match(env, /FREEZE_KINDLE_WINDOW_MANAGER=.*true/);
+  assert.match(env, /POWER_BUTTON_RESTORES_KINDLE=.*true/);
+  assert.match(dash, /local\/chrome-control\.sh/);
+  assert.match(dash, /local\/power-button-exit\.sh/);
+  assert.match(dash, /hide_kindle_chrome/);
+  assert.match(dash, /trap dashboard_cleanup EXIT/);
+  assert.match(dash, /trap dashboard_shutdown HUP INT TERM/);
+  assert.match(stop, /local\/chrome-control\.sh/);
+  assert.match(stop, /restore_kindle_chrome/);
+  assert.doesNotMatch(stop, /env\.sh/);
+  assert.match(start, /"\$DIR\/dash\.sh"/);
+  assert.doesNotMatch(start, /nohup \.\/dash\.sh/);
+  assert.match(stop, /logs\/dash\.pid/);
+  assert.match(stop, /signal_owned_process/);
+});
+
+test('signals only a PID owned by the absolute dashboard command', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-process-owner-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const capture = join(directory, 'signals.log');
+
+  mkdirSync(join(directory, 'proc', '4242'), { recursive: true });
+  mkdirSync(join(directory, 'proc', '5252'), { recursive: true });
+  writeFileSync(
+    join(directory, 'proc', '4242', 'cmdline'),
+    '/bin/sh\0/mnt/us/extensions/kindle-dash/dash.sh\0',
+  );
+  writeFileSync(join(directory, 'proc', '5252', 'cmdline'), '/bin/sh\0unrelated.sh\0');
+  writeFileSync(
+    join(directory, 'signal-process'),
+    '#!/usr/bin/env sh\nprintf \'%s\\n\' "$*" >> "$CAPTURE"\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `chmod +x "$PWD/${fixture}/signal-process"; export PROCESS_PROC_ROOT="$PWD/${fixture}/proc"; export PROCESS_SIGNAL_CMD="$PWD/${fixture}/signal-process"; export CAPTURE="$PWD/${fixture}/signals.log"; . ./kindle-extension/local/dashboard-utils.sh; signal_owned_process 4242 'extensions/kindle-dash/dash.sh' TERM || exit 1; if signal_owned_process 5252 'extensions/kindle-dash/dash.sh' TERM; then exit 2; fi`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(capture, 'utf8').trim(), '-TERM 4242');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('physical power-button event exits dashboard mode without matching RTC wake', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-power-exit-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const capture = join(directory, 'stop.log');
+  const eventPidFile = join(directory, 'event.pid');
+  const eventFifo = join(directory, 'events.fifo');
+
+  writeFileSync(
+    join(directory, 'lipc-wait-event'),
+    '#!/usr/bin/env sh\nprintf \'wakeupFromSuspend 0\\n\'\n',
+  );
+  writeFileSync(
+    join(directory, 'stop-dashboard'),
+    '#!/usr/bin/env sh\nprintf \'stopped\\n\' >> "$CAPTURE"\n',
+  );
+
+  try {
+    const rtcResult = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `chmod +x "$PWD/${fixture}/lipc-wait-event" "$PWD/${fixture}/stop-dashboard"; PATH="$PWD/${fixture}:$PATH" CAPTURE="$PWD/${fixture}/stop.log" DASHBOARD_EVENT_FIFO="$PWD/${fixture}/events.fifo" ./kindle-extension/local/power-button-exit.sh "$PWD/${fixture}/stop-dashboard" "$PWD/${fixture}/event.pid"`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(rtcResult.status, 0, rtcResult.stderr);
+    assert.equal(existsSync(capture), false);
+    assert.equal(existsSync(eventPidFile), false);
+    assert.equal(existsSync(eventFifo), false);
+
+    writeFileSync(
+      join(directory, 'lipc-wait-event'),
+      '#!/usr/bin/env sh\nprintf \'goingToScreenSaver 2\\n\'\n',
+    );
+
+    const powerButtonResult = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `PATH="$PWD/${fixture}:$PATH" CAPTURE="$PWD/${fixture}/stop.log" DASHBOARD_EVENT_FIFO="$PWD/${fixture}/events.fifo" ./kindle-extension/local/power-button-exit.sh "$PWD/${fixture}/stop-dashboard" "$PWD/${fixture}/event.pid"`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(powerButtonResult.status, 0, powerButtonResult.stderr);
+    assert.equal(readFileSync(capture, 'utf8').trim(), 'stopped');
+    assert.equal(existsSync(eventPidFile), false);
+    assert.equal(existsSync(eventFifo), false);
+
+    const watcher = readFileSync(
+      join(process.cwd(), 'kindle-extension', 'local', 'power-button-exit.sh'),
+      'utf8',
+    );
+    assert.match(watcher, /kill -KILL "\$EVENT_PID"/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('keeps RTC refresh opt-in and falls back to a full userspace sleep', () => {
   const env = readFileSync(join(process.cwd(), 'kindle-extension', 'local', 'env.sh'), 'utf8');
   const dash = readFileSync(join(process.cwd(), 'kindle-extension', 'dash.sh'), 'utf8');
