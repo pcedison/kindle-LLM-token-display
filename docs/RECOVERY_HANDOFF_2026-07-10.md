@@ -167,6 +167,8 @@ Completed in `c3b8b73`.
   module-reparse warning is removed.
 - Windows Kindle-script tests resolve the installed Git Bash directly instead of
   accidentally invoking the Windows WSL compatibility stub.
+- CI test fixtures remain on the checkout drive, and Windows PowerShell 5.1
+  harnesses discard an inherited PowerShell 7 module path before startup.
 
 ## Verification Evidence
 

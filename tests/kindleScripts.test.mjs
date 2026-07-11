@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { tmpdir } from 'node:os';
 import test from 'node:test';
 
 const gitBash = join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'bin', 'bash.exe');
@@ -77,7 +76,7 @@ test('reads a valid diagnostic battery value and rejects invalid values', () => 
 });
 
 test('uses LIPC after an invalid gasgauge result and does not consult powerd_test', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'kindle-scripts-'));
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-scripts-'));
   const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
   const powerdMarker = join(directory, 'powerd-ran');
 
@@ -110,7 +109,7 @@ test('uses LIPC after an invalid gasgauge result and does not consult powerd_tes
 });
 
 test('uses an isolated Kindle sysfs battery_capacity before LIPC', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'kindle-scripts-'));
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-scripts-'));
   const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
   const sysfsBattery = join(
     directory,
@@ -153,7 +152,7 @@ test('uses an isolated Kindle sysfs battery_capacity before LIPC', () => {
 });
 
 test('parses the final powerd_test Battery Level after earlier sources fail', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'kindle-scripts-'));
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-scripts-'));
   const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
 
   writeFileSync(join(directory, 'gasgauge-info'), '#!/usr/bin/env sh\nprintf \'invalid\\n\'\n');
@@ -184,7 +183,7 @@ test('parses the final powerd_test Battery Level after earlier sources fail', ()
 });
 
 test('uses the first valid battery source and forwards it without logging the configured URL', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'kindle-scripts-'));
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-scripts-'));
   const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
   const capture = join(directory, 'fetch-url');
   const output = join(directory, 'dashboard.png');
@@ -219,7 +218,7 @@ test('uses the first valid battery source and forwards it without logging the co
 });
 
 test('finds an overridden duration RTC path and writes suspend inputs without suspending the host', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'kindle-rtc-'));
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-rtc-'));
   const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
   const rtcPath = join(directory, 'wakeup_enable');
   const powerStatePath = join(directory, 'power_state');
@@ -250,7 +249,7 @@ test('finds an overridden duration RTC path and writes suspend inputs without su
 });
 
 test('reports no duration RTC path when the override is missing', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'kindle-rtc-'));
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-rtc-'));
   const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
 
   try {
@@ -275,7 +274,7 @@ test('reports no duration RTC path when the override is missing', () => {
 });
 
 test('schedules an epoch RTC wakealarm before writing the mem power state', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'kindle-wakealarm-'));
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-wakealarm-'));
   const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
   const wakealarmPath = join(directory, 'wakealarm');
   const sinceEpochPath = join(directory, 'since_epoch');
@@ -304,7 +303,7 @@ test('schedules an epoch RTC wakealarm before writing the mem power state', () =
 });
 
 test('rejects an epoch RTC whose clock is still near 1970', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'kindle-wakealarm-'));
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-wakealarm-'));
   const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
 
   writeFileSync(join(directory, 'wakealarm'), '');

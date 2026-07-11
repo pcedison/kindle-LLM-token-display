@@ -20,6 +20,12 @@ function psQuote(value) {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
+function windowsPowerShellEnv() {
+  const env = { ...process.env };
+  delete env.PSModulePath;
+  return env;
+}
+
 function runPowerShellHarness(buildScript) {
   const root = mkdtempSync(join(tmpdir(), 'kindle-llm-windows-'));
   const harnessPath = join(root, 'harness.ps1');
@@ -27,6 +33,7 @@ function runPowerShellHarness(buildScript) {
   try {
     const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', harnessPath], {
       encoding: 'utf8',
+      env: windowsPowerShellEnv(),
     });
     const jsonLine = result.stdout.split(/\r?\n/).findLast((line) => line.startsWith('{') && line.endsWith('}'));
     return { ...result, observation: jsonLine ? JSON.parse(jsonLine) : null };
@@ -42,7 +49,10 @@ test('all Windows scripts parse with Windows PowerShell', () => {
       `[System.Management.Automation.Language.Parser]::ParseFile('${file.pathname.replace(/^\//, '').replaceAll('/', '\\')}', [ref]$tokens, [ref]$errors) | Out-Null;`,
       'if ($errors.Count) { $errors | ForEach-Object { $_.Message }; exit 1 }',
     ].join(' ');
-    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { encoding: 'utf8' });
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
+      encoding: 'utf8',
+      env: windowsPowerShellEnv(),
+    });
     assert.equal(result.status, 0, result.stderr || result.stdout);
   }
 });
