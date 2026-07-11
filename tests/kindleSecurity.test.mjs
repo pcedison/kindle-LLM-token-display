@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import test from 'node:test';
 
@@ -19,7 +18,7 @@ function runShell(command, env = {}) {
 }
 
 function makeFixture() {
-  const directory = mkdtempSync(join(tmpdir(), 'kindle-security-'));
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-security-'));
   return {
     directory,
     shellPath: `$PWD/${relative(process.cwd(), directory).replaceAll('\\', '/')}`,

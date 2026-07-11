@@ -8,9 +8,9 @@ Production URL: intentionally not tracked; obtain it from the Vercel project.
 
 The interrupted source work was recovered without evidence of corruption. Tasks 1
 through 7 are implemented in the recovery clone and the final independent review
-is approved. The current release candidate passes 130 tests, a Next.js production
-build, shell and PowerShell syntax checks, and a local production HTTP PNG smoke
-test.
+is approved. The current release candidate passes 133 tests, a Next.js production
+build, shell and PowerShell syntax checks, a local production HTTP PNG smoke test,
+and a two-platform pull-request CI definition.
 
 GitHub publication, PR merge, the merge-commit Vercel build, and mounted-Kindle
 script synchronization are complete. Remaining external work is private Vercel
@@ -25,11 +25,11 @@ steps must not be described as complete until their evidence is recorded below.
 - Original feature worktree: `<WORKSPACE>\kindle-llm-dash-live-quota`,
   branch `codex/live-quota-v1`, HEAD `de48e16` when the app closed.
 - Active recovery clone: `<WORKSPACE>\kindle-llm-dash\.recovery\live-quota`,
-  branch `codex/live-quota-recovery`, HEAD `439859c` before this external-status
-  update.
+  branch `codex/live-quota-recovery`, baseline HEAD `1fb2c5d` before the
+  public-readiness follow-up.
 - GitHub feature branch observed before publication: `codex/live-quota-v1`, HEAD
   `eefe204`; published snapshot HEAD is now `78a04b7`.
-- GitHub `main` after PR #4: `36fae92`.
+- GitHub `main` after PR #5: `6ee48d9` before the public-readiness follow-up.
 - True whole-feature base: `c48ba55`; implementation-plan checkpoint: `eefe204`.
 
 Use the recovery clone for all continuation work. It now has a real local
@@ -79,8 +79,8 @@ Completed and reviewed in `b2df8ef` and `24c477e`.
 - Dashboard view authorization runs before storage access.
 - Partial provider updates preserve the other provider and existing windows.
 
-Known non-blocking gap: there is no separate test for a body of exactly 8192
-bytes. Oversized declared, buffered, and streamed bodies are covered.
+The exact accepted 8192-byte boundary plus oversized declared, buffered, and
+streamed bodies are covered.
 
 ### Task 3: DP75SDI portrait dashboard
 
@@ -161,21 +161,29 @@ Completed in `c3b8b73`.
 - Security, architecture, Vercel, and Windows runbooks.
 - Tracked 758x1024 grayscale DP75SDI fixture preview.
 - Release-hygiene tests prevent personal URL/default regressions.
+- Pull-request and `main` CI on Windows and Ubuntu verifies tests, production
+  build, and every tracked Kindle shell script.
+- The project and Next configuration consistently use ESM; the earlier Node
+  module-reparse warning is removed.
+- Windows Kindle-script tests resolve the installed Git Bash directly instead of
+  accidentally invoking the Windows WSL compatibility stub.
+- CI test fixtures remain on the checkout drive, and Windows PowerShell 5.1
+  harnesses discard an inherited PowerShell 7 module path before startup.
 
 ## Verification Evidence
 
 Fresh verification in the active recovery clone on 2026-07-11:
 
-- `npm.cmd test`: 130 passed, 0 failed, 0 cancelled.
+- `npm.cmd test`: 133 passed, 0 failed, 0 cancelled.
 - `npm.cmd run build`: exit 0.
 - Build routes: static `/`; dynamic `/api/dashboard` and `/api/usage`.
-- Every `kindle-extension/**/*.sh`: `bash -n` passed using Git for Windows Bash.
-- Every Windows collector script: parsed by Windows PowerShell through the test
-  suite.
+- Every tracked shell script: 13/13 passed `bash -n` using Git for Windows Bash.
+- Every tracked PowerShell script: 3/3 parsed with Windows PowerShell; behavioral
+  collector checks are also included in the test suite.
 - `git diff --check`: exit 0.
 - Tracked fixture: 758x1024, 8-bit grayscale, PNG color type 0.
 - Local `next start` HTTP smoke: status 200, `image/png`, `no-store`, 758x1024,
-  one-channel 8-bit grayscale, 28,362 bytes.
+  one-channel 8-bit grayscale.
 
 ## Final Review History
 
@@ -197,12 +205,10 @@ local state and added the exact delayed-upload regression. The same review raise
 schema-1 migration conditionally; it is not an active blocker because the remote
 branch never contained an installer and the local machine has neither the old
 fixed task nor a GUID uploader task. Final re-review result: `APPROVED`, focused
-tests 59/59 and full tests 130/130.
-
-The only test warning is Node's `MODULE_TYPELESS_PACKAGE_JSON` reparse warning for
-`app/api/usage/route.js`. Adding `type: module` is not a safe one-line change
-because `next.config.js` is CommonJS. It is non-blocking and should be addressed
-only as a deliberate module-system migration.
+tests 59/59 and full tests 130/130 at that review point. The later public-readiness
+follow-up adds three release/edge tests, bringing the fresh full suite to 133/133.
+The deliberate ESM migration changes `next.config.js` to `next.config.mjs` and
+removes the former `MODULE_TYPELESS_PACKAGE_JSON` warning.
 
 ## Git And Review State
 
@@ -238,8 +244,10 @@ readable in this sandbox. Publication therefore used the connected GitHub App's
 Git Data API. All 63 changed blobs matched their local Git blob SHA, and remote
 tree `ec20195b7fd25dc2cf61a3702cc94b07bebabb24` exactly matched the reviewed
 local tree. Remote snapshot `78a04b7` was merged through
-[PR #4](https://github.com/pcedison/kindle-LLM-token-display/pull/4) using squash;
-`main` is `36fae92`. The local granular commits remain the audit trail.
+[PR #4](https://github.com/pcedison/kindle-LLM-token-display/pull/4) using squash.
+The deployment/device handoff was merged through
+[PR #5](https://github.com/pcedison/kindle-LLM-token-display/pull/5); the resulting
+baseline `main` is `6ee48d9`. The local granular commits remain the audit trail.
 
 ## Production Configuration Contract
 
@@ -250,7 +258,7 @@ values into Git, screenshots, issue text, command history, or this handoff.
 - `DASHBOARD_INGEST_TOKEN`
 - `DASHBOARD_VIEW_TOKEN` (optional, but recommended for a private device URL)
 
-The GitHub status on merge commit `36fae92` reports the Vercel deployment as
+The GitHub status on merge commit `6ee48d9` reports the Vercel deployment as
 successful. This proves the integrated production build completed, but not that
 private Blob and all three values above are configured correctly. Direct endpoint
 verification remains pending because shell/web egress is blocked and the requested
@@ -345,11 +353,6 @@ terminal for Vercel-only operations if the CLI remains unavailable.
 
 ## Later Optimizations
 
-- Add the exact accepted 8192-byte ingest-boundary test.
-- Migrate the project consistently to ESM or remove the module-type warning by a
-  deliberate config change.
-- Add CI jobs for Node tests, Next build, Windows PowerShell parser tests, shell
-  syntax, release hygiene, and fixture metadata.
 - Add a redacted collector health timestamp to diagnostics.
 - Add a signed local dry-run mode that prints normalized field names only.
 - Add a cross-process Windows stress harness for simultaneous manual uploader
@@ -382,8 +385,10 @@ GitHub branch/PR SHA, check status, and Vercel production SHA separately.
 
 ## Release Decision
 
-The source is independently approved, merged to GitHub `main`, and accepted by
-the merge-commit Vercel build. The reviewed Kindle scripts are synchronized. The
-project is not yet a completed public v1 or a completed real-device live-quota
-installation until private Vercel configuration, direct production/auth smoke,
-collector installation, and the unplugged 13-minute Kindle cycle are recorded.
+The source is independently approved, merged to GitHub `main`, licensed under
+MIT, documented, and accepted by the merge-commit Vercel build. The reviewed
+Kindle scripts are synchronized. It is suitable to publish as an open-source beta
+or release candidate. It must not yet be described as a stable production v1 or
+a completed real-device live-quota installation until private Vercel
+configuration, direct production/auth smoke, collector installation, and the
+unplugged 13-minute Kindle cycle are recorded.
