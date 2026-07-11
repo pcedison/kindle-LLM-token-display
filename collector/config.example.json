@@ -1,0 +1,7 @@
+{
+  "ingestUrl": "https://your-vercel-project.example/api/usage",
+  "ingestToken": "REPLACE_WITH_DASHBOARD_INGEST_TOKEN",
+  "codexCommand": "codex",
+  "timeoutMs": 30000,
+  "timeZone": "Asia/Taipei"
+}

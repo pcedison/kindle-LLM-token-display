@@ -6,7 +6,7 @@
 
 **Architecture:** Pure modules normalize and merge a versioned quota snapshot. A signed Node.js Vercel endpoint persists the merged snapshot in private Vercel Blob storage, while the PNG endpoint reads it with manual environment values as fallback. A local Node.js collector receives Claude status-line JSON, queries Codex through the official app-server JSONL protocol, and uploads the sanitized snapshot on a Windows Scheduled Task.
 
-**Tech Stack:** Next.js 16, React, `next/og` ImageResponse, Node.js 18+ ESM, Node test runner, `@vercel/blob`, PowerShell 5.1+, official Claude Code CLI 2.1.196+, official Codex CLI app-server, KUAL/eips Kindle scripts.
+**Tech Stack:** Next.js 16, React, `next/og` ImageResponse, Node.js 20.9+ ESM, Node test runner, `@vercel/blob`, PowerShell 5.1+, official Claude Code CLI 2.1.196+, official Codex CLI app-server, KUAL/eips Kindle scripts.
 
 ## Global Constraints
 
@@ -20,6 +20,7 @@
 - Five-hour reset labels use `RESET HH:mm`; weekly reset labels use `RESET MM/DD HH:mm` in `Asia/Taipei` by default.
 - Manual environment values remain a working no-collector fallback.
 - All repository scripts and examples contain placeholders only, never real secrets or personal endpoints.
+- Project and collector runtime require Node.js 20.9.0 or newer, matching Next.js 16 and private Vercel Blob SDK requirements.
 - Every code task follows red-green TDD and stages only files owned by that task.
 
 ---
@@ -192,6 +193,8 @@ when `BLOB_READ_WRITE_TOKEN` exists. The production pathname is
 `usage/latest.json`; `put` uses `access: 'private'`, `allowOverwrite: true`,
 `addRandomSuffix: false`, and `contentType: 'application/json'`. Missing
 configuration or object returns `null` rather than throwing into the renderer.
+Set `package.json` `engines.node` to `>=20.9.0` so incompatible installs fail
+before deployment.
 
 - [ ] **Step 4: Implement constant-time request authorization**
 
@@ -669,8 +672,8 @@ git commit -m "Prepare open-source v1 release"
 
 **Files:**
 - Modify locally only: `%LOCALAPPDATA%\KindleLLMDashboard\config.json`
-- Modify device only: `D:\extensions\kindle-dash\local\env.sh`
-- Preserve device backup under: `D:\extensions\kindle-dash\backups\`
+- Modify device only: `<KINDLE_DRIVE>:\extensions\kindle-dash\local\env.sh`
+- Preserve device backup under: `<KINDLE_DRIVE>:\extensions\kindle-dash\backups\`
 - Generate ignored artifact: `artifacts/dashboard-dp75sdi.png`
 
 **Interfaces:**

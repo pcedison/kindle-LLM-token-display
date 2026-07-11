@@ -1,202 +1,108 @@
 # Kindle LLM Token Dashboard
 
-This project renders a Kindle-friendly PNG dashboard on Vercel. The Kindle does
-not run the web app directly. It downloads `/api/dashboard` as a PNG and displays
-that file with `eips`.
+A low-power, portrait e-ink dashboard for Claude Code and Codex subscription quota windows. Vercel renders an opaque grayscale PNG; a jailbroken Kindle downloads it and draws it with `eips`. Provider credentials remain inside the official local clients.
 
-Production URL currently used by the Kindle:
+![DP75SDI dashboard](docs/images/dashboard-dp75sdi.png)
 
-```text
-https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&claude=true&openai=true&gemini=false
-```
+## Release Status
 
-## What Is Already Set Up
+The renderer, signed ingest, local collectors, and reversible Windows installer are implemented and covered by automated tests. Production deployment and real-device acceptance are environment-specific final steps; do not call a fork production-ready until those checks pass.
 
-- Vercel/Next endpoint outputs portrait PNGs for Kindle.
-- Dashboard PNGs are flattened to opaque 8-bit grayscale before delivery so
-  older Kindle `eips` builds do not misread RGBA/alpha PNG data.
-- `profile=dp75sdi` outputs `758x1024` for the mounted DP75SDI device.
-- The top-left header shows the Kindle battery icon and percentage. The Kindle
-  reads its own battery level and appends it as `battery=N` on every refresh.
-- Kindle scripts live under `/mnt/us/extensions/kindle-dash`.
-- KUAL has Start, Refresh Now, diagnostics, a guarded 60-second Low Power Test,
-  and Stop/Restore actions.
-- Kindle refresh interval is controlled locally by `REFRESH_INTERVAL_SECS`.
+## Demo Mode
 
-## Final Values To Fill In
-
-The dashboard now reads display values from Vercel Environment Variables. These
-are plain display labels. Do not put API keys in this repo.
-
-Add these in Vercel Project Settings -> Environment Variables:
+Deploy the repository to Vercel, set optional manual values from `.env.example`, and open:
 
 ```text
-CLAUDE_STATUS_VALUE
-CLAUDE_RESET_LABEL
-CLAUDE_PROGRESS_VALUE
-OPENAI_STATUS_VALUE
-OPENAI_RESET_LABEL
-OPENAI_PROGRESS_VALUE
-GEMINI_STATUS_VALUE
-GEMINI_RESET_LABEL
-GEMINI_PROGRESS_VALUE
+https://your-project.vercel.app/api/dashboard?profile=dp75sdi&claude=true&openai=true&gemini=false&battery=82
 ```
 
-Example values:
+Manual values are display fixtures only. They are useful before local collection is installed, but they are not live subscription data.
 
-```text
-CLAUDE_STATUS_VALUE=12%
-CLAUDE_RESET_LABEL=Reset 2026-08-01
-CLAUDE_PROGRESS_VALUE=12
-OPENAI_STATUS_VALUE=$18.42
-OPENAI_RESET_LABEL=Reset 2026-07-31
-OPENAI_PROGRESS_VALUE=28
-GEMINI_STATUS_VALUE=4.5k / 5k
-GEMINI_RESET_LABEL=Window 24h
-GEMINI_PROGRESS_VALUE=90
+## Private Live Mode
+
+Live mode reads the official local subscription quota surfaces:
+
+- Claude Code status-line JSON: rolling 5-hour and 7-day windows.
+- Codex app-server `account/rateLimits/read`: windows mapped by duration.
+
+An Anthropic API key or OpenAI API key does not expose these subscription-plan quotas. The collector does not open provider credential files. Claude Code sends its status-line JSON to the configured child process, and the collector requests rate-limit JSON from the Codex app-server; both inputs are normalized in memory and all unapproved fields are discarded. Only percentages and reset timestamps are uploaded through the signed `/api/usage` endpoint.
+
+Set up private Vercel Blob, `DASHBOARD_INGEST_TOKEN`, and optional `DASHBOARD_VIEW_TOKEN` by following [Vercel setup](docs/VERCEL-SETUP.md). The data flow and schema are in [Architecture](docs/ARCHITECTURE.md), and the trust boundaries are in [Security](docs/SECURITY.md).
+
+## Windows Collector
+
+Prerequisites:
+
+- Node.js 20.9 or newer.
+- Official Claude Code signed in with a Claude.ai subscription.
+- Official Codex CLI signed in with ChatGPT.
+
+Install from PowerShell:
+
+```powershell
+.\collector\install-windows.ps1 -IngestUrl 'https://your-project.vercel.app/api/usage'
 ```
 
-`*_PROGRESS_VALUE` is optional. If the display value contains a percentage such
-as `96%`, the dashboard can infer the progress bar automatically. Use the
-progress variable when the display value is money or text. When values are not
-configured yet, the dashboard keeps the provider names visible and shows quiet
-`--` / `Pending` placeholders. After changing Vercel env vars, redeploy the
-production deployment. The Kindle will pick up the new values on its next
-refresh.
+The installer prompts for the ingest token as a SecureString, stores runtime configuration under `%LOCALAPPDATA%\KindleLLMDashboard` with restricted ACLs, registers Claude's status line, and creates a per-user `Kindle LLM Quota Uploader-<GUID>` task every five minutes. The protected manifest retains that generated name across reinstalls. It refuses to replace a foreign Claude status line unless `-ReplaceExistingStatusLine` is supplied.
 
-## URL Parameters
+Diagnostics and removal:
 
-```text
-profile=dp75sdi
-w=758
-h=1024
-claude=true
-openai=true
-gemini=false
+```powershell
+.\collector\diagnose-windows.ps1
+.\collector\uninstall-windows.ps1
 ```
+
+See [Windows collector](docs/WINDOWS-COLLECTOR.md) for installation, recovery, token rotation, and uninstall details.
+
+## Kindle Setup
 
 Supported profiles:
 
-| Profile | Size | Use case |
+| Profile | PNG size | Device |
 | --- | ---: | --- |
-| `dp75sdi` | `758x1024` | Kindle DP75SDI / Paperwhite 2 safe portrait default |
+| `dp75sdi` | `758x1024` | Kindle Paperwhite 2 / DP75SDI |
 | `kpw3` | `1072x1448` | Kindle Paperwhite 3 |
 | `voyage` | `1080x1440` | Kindle Voyage |
 | `basic` | `600x800` | Kindle Basic |
 
-If the real device needs a custom size, add `w` and `h`:
-
-```text
-https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=600&h=800
-```
-
-## Kindle Local Files
-
-When mounted on Windows:
-
-```text
-D:\extensions\kindle-dash
-```
-
-On Kindle:
-
-```text
-/mnt/us/extensions/kindle-dash
-```
-
-Important files:
-
-```text
-local/env.sh              refresh interval and dashboard URL
-local/fetch-dashboard.sh  downloads the PNG from Vercel
-local/get-battery-level.sh reads the Kindle battery percentage
-local/display-test-frame.sh draws a 758x1024 diagnostic PNG without clearing the screen
-start.sh                  starts the long-running dashboard loop
-refresh-now.sh            refreshes once immediately
-diagnose.sh               writes battery, Wi-Fi, power, thermal, and RTC diagnostics
-low-power-test.sh         probes timed suspend and wake for 60 seconds
-stop.sh                   stops dashboard and restores Kindle UI
-logs/dash.log             runtime log
-logs/power-diagnostics.log diagnostic report
-logs/low-power-test.log   timed-suspend probe result
-```
-
-The dashboard URL may be previewed in a browser with a simulated battery value:
-
-```text
-https://kindle-llm-dash-1.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&claude=true&openai=true&gemini=false&battery=82
-```
-
-The battery value is normally supplied automatically by Kindle and should not
-be added manually to `local/env.sh`.
-
-## Low-Power Probe
-
-`DASHBOARD_USE_RTC` remains `false` by default. Do not change it until the real
-device has passed the probe:
-
-1. Mount the Kindle and copy the reviewed `kindle-extension` folder to
-   `D:\extensions\kindle-dash`.
-2. Safely eject the Kindle and open KUAL.
-3. Run `Write Dashboard Status Log`.
-4. Mount the Kindle again and inspect `logs/power-diagnostics.log`.
-5. Safely eject again and run `Low Power Test (60 sec)`.
-6. After the Kindle wakes, mount it and inspect `logs/low-power-test.log`.
-
-Only a log containing `WAKE_SUCCESS` after `PROBE_START` proves that timed
-sleep and wake work on this device. Until then, leave
-`DASHBOARD_USE_RTC=false`; the dashboard uses the stable userspace wait mode.
-If the probe reports `UNSUPPORTED`, continue using the normal mode and do not
-repeat it unattended.
-
-## Kindle Refresh Interval
-
-Edit `local/env.sh`:
+Copy `kindle-extension` to `<KINDLE_DRIVE>:\extensions\kindle-dash`, then edit `local/env.sh` and replace the generic dashboard hostname. Keep portrait dimensions and the 12-minute default:
 
 ```sh
-export REFRESH_INTERVAL_SECS=${REFRESH_INTERVAL_SECS:-720}
+export DASHBOARD_URL="https://your-project.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&claude=true&openai=true&gemini=false"
+export REFRESH_INTERVAL_SECS=720
 ```
 
-Common values:
+If view protection is enabled, append `key=YOUR_VIEW_TOKEN` to the private local URL. Never commit that edited device file.
 
-```text
-900   = 15 minutes
-720   = 12 minutes
-1800  = 30 minutes
-3600  = 60 minutes
-```
+Safely eject the Kindle and use KUAL in this order:
+
+1. `Display Test Frame`
+2. `Display Cached Dashboard`
+3. `Start LLM Token Dashboard`
+
+The proven DP75SDI path keeps the Kindle framework running and does not clear the panel before `eips`. Leave `DASHBOARD_USE_RTC=false` until the 60-second probe records `WAKE_SUCCESS`. The staged RTC procedure is documented in the [DP75SDI battery and low-power design](docs/superpowers/specs/2026-07-10-kindle-battery-low-power-design.md).
+
+## Display Behavior
+
+- Each provider shows independent 5-hour and 7-day remaining bars.
+- Missing data displays `WAITING FOR LOCAL SYNC`.
+- Data older than 24 hours is marked stale.
+- An elapsed reset window displays `RESET COMPLETE` until a new official snapshot arrives.
+- The Kindle supplies its own battery percentage on each request.
+- PNG responses are fixed-size, opaque, 8-bit grayscale, non-interlaced, and not cached.
 
 ## Recovery
 
-If the Kindle appears stuck, first run this from KUAL:
+If the panel appears stuck, run `Stop Dashboard / Restore Kindle` in KUAL. If needed, use `/mnt/us/extensions/kindle-dash/stop.sh` over SSH. A long power-button reboot is the last resort when KUAL and SSH are unavailable.
 
-```text
-Stop Dashboard / Restore Kindle
+For server or collector failures, use the runbooks in [Vercel setup](docs/VERCEL-SETUP.md) and [Windows collector](docs/WINDOWS-COLLECTOR.md). Removing the private Blob deletes the latest sanitized snapshot; it does not affect provider accounts.
+
+## Development
+
+```powershell
+npm.cmd install
+npm.cmd test
+npm.cmd run build
 ```
 
-For display debugging, run these KUAL items in this order:
-
-```text
-Display Test Frame
-Display Cached Dashboard
-Start LLM Token Dashboard
-```
-
-The current DP75SDI launcher does not stop the Kindle framework and does not
-clear the screen before drawing. Those two actions caused blank-screen failures
-on this device.
-
-Or by SSH:
-
-```sh
-/mnt/us/extensions/kindle-dash/stop.sh
-```
-
-Use a long power-button reboot only if KUAL and SSH are unavailable.
-
-## Local Development
-
-```sh
-npm test
-npm run build
-```
+The project is licensed under the [MIT License](LICENSE).

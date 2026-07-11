@@ -1,0 +1,358 @@
+# Live Quota Dashboard Recovery Handoff
+
+Last updated: 2026-07-11, Asia/Taipei
+Repository: `pcedison/kindle-LLM-token-display`
+Production URL: intentionally not tracked; obtain it from the Vercel project.
+
+## Executive Status
+
+The interrupted source work was recovered without evidence of corruption. Tasks 1
+through 7 are implemented in the recovery clone and the final independent review
+is approved. The current release candidate passes 130 tests, a Next.js production
+build, shell and PowerShell syntax checks, and a local production HTTP PNG smoke
+test.
+
+The remaining work is external rollout: publish the reviewed snapshot to GitHub,
+confirm the Vercel deployment and private Blob configuration, install the Windows
+collector with real secrets, synchronize the mounted Kindle extension, and run a
+13-minute device acceptance cycle. These steps must not be described as complete
+until their external evidence is recorded below.
+
+## Canonical Paths And Branches
+
+- Main checkout: `<WORKSPACE>\kindle-llm-dash`, branch `main`, HEAD
+  `c48ba55` when recovery began.
+- Original feature worktree: `<WORKSPACE>\kindle-llm-dash-live-quota`,
+  branch `codex/live-quota-v1`, HEAD `de48e16` when the app closed.
+- Active recovery clone: `<WORKSPACE>\kindle-llm-dash\.recovery\live-quota`,
+  branch `codex/live-quota-recovery`, HEAD `3d7f351` before this handoff update.
+- GitHub feature branch observed before publication: `codex/live-quota-v1`, HEAD
+  `eefe204`.
+- True whole-feature base: `c48ba55`; implementation-plan checkpoint: `eefe204`.
+
+Use the recovery clone for all continuation work. It now has a real local
+`node_modules` tree and is the only location verified at the latest release
+candidate. Do not use the stale cross-root dependency junctions.
+
+## Interruption Audit
+
+The Windows Codex app exited unexpectedly during the earlier review cycle. No
+Windows diagnostic was available that proves the external cause. Repository
+evidence supports the following conclusions:
+
+1. The original feature worktree remained intact at `de48e16`.
+2. The reviewer process disappeared, so only review/session state was lost.
+3. The first recovery install hit npm cache permission failures and left partial
+   dependency directories.
+4. A diagnostic cross-root `node_modules` junction caused one invalid Turbopack
+   failure because Next.js rejects dependencies outside the project root.
+5. The source suite passed in the original worktree, and later passed in the
+   recovery clone after a real dependency tree was copied into that clone.
+6. No tracked source file, commit object, or generated Kindle PNG was found
+   corrupted.
+
+The app-exit root cause remains unknown. The source recovery is complete; the
+remaining junction backup directories are untracked diagnostic leftovers only.
+
+## Completed Work
+
+### Task 1: Normalized dual-window quota contract
+
+Completed and reviewed in `9c8590d` and `ef0292a`.
+
+- Supports Claude and Codex 5-hour and 7-day windows.
+- Preserves fractional percentages.
+- Validates reset epochs within the shared 2020-2100 boundary.
+- Rejects credential-like fields recursively.
+- Preserves legacy/manual 5-hour fallbacks.
+
+### Task 2: Signed ingest and private snapshot storage
+
+Completed and reviewed in `b2df8ef` and `24c477e`.
+
+- Exact bearer authentication for `/api/usage`.
+- 8192-byte declared and streamed body limits with early termination.
+- Credential-free error responses.
+- Private Vercel Blob storage with a stable pathname.
+- Dashboard view authorization runs before storage access.
+- Partial provider updates preserve the other provider and existing windows.
+
+Known non-blocking gap: there is no separate test for a body of exactly 8192
+bytes. Oversized declared, buffered, and streamed bodies are covered.
+
+### Task 3: DP75SDI portrait dashboard
+
+Completed and independently approved in `de1fc46` and `de48e16`.
+
+- Exact 758x1024 opaque 8-bit grayscale PNG for DP75SDI/Paperwhite 2.
+- Battery header, large Anthropic Claude Code and Codex titles.
+- Separate 5 HOURS and 7 DAYS rows with fixed progress geometry.
+- Fractional, 100%, missing, stale, and reset-complete states.
+- Valid Basic 600x800 three-provider layout and KPW3/Voyage profiles.
+- Compact layouts hide Pikachu before shrinking quota bars.
+- Preview failures redact URLs and query credentials.
+
+### Task 4: Claude status-line collector
+
+Completed and approved in `6f03301`, `5bb98e5`, `f915fe7`, and `fecb030`.
+
+- Reads only official Claude rate-limit fields.
+- Keeps a bounded sanitized snapshot.
+- Atomically replaces state and syncs the file and containing directory.
+- Preserves an existing valid window when a status update is partial.
+- Tests use isolated state roots and never write real `LOCALAPPDATA`.
+
+### Task 5: Codex app-server collector and uploader
+
+Completed and approved in `e6a5051`, `bb633d8`, and `e7fb5d9`; final runtime
+fixes are in `dbb15c4`, `c44bc27`, `104fe9c`, and `3d7f351`.
+
+- Uses official `codex app-server --stdio` JSONL exchange.
+- Maps windows by duration and prefers the Codex limit identifier.
+- Carries split JSONL chunks across reads.
+- Handles spawn errors, drains stderr, suppresses stdin teardown errors, and
+  deterministically terminates timed-out children.
+- Uploads only normalized bounded JSON over HTTPS.
+- Keeps request abort active while a response body stalls.
+- Uses server-side ETag CAS and provider timestamps instead of a reclaimable
+  filesystem lock; delayed old uploads cannot roll back Blob state.
+- Serializes same-process local state writes and monotonically merges the current
+  `last-upload.json` before replacement.
+- Never writes the ingest token to local state.
+
+### Task 6: Reversible Windows collector installation
+
+Implemented in `b095b9b`, hardened in `468ce2e`, and completed by the installed
+runtime dependency fix in `dbb15c4` plus final ownership changes in `c44bc27`
+and `104fe9c`.
+
+- Parses under Windows PowerShell 5.1.
+- Prompts for secrets as `SecureString` and keeps them out of the scheduled-task
+  command line.
+- Protects config and manifest ACLs; cleanup fails closed if protection fails.
+- Registers one random `Kindle LLM Quota Uploader-<GUID>` 5-minute per-user
+  scheduled task and retains its exact identity in a protected schema-2 manifest.
+- Performs staged reinstall and rollback for task, install tree, and Claude
+  settings.
+- Refuses to overwrite a foreign Claude status-line command.
+- Never force-replaces a task; validates its action before rollback, after `/End`,
+  and immediately before deletion.
+- Restores only the original Claude `statusLine`; unrelated settings changed
+  after installation are preserved.
+- Finds `.cmd` command shims and emits redacted diagnostics.
+- Copies `app/api/dashboard/quotaSnapshot.mjs`, required by the installed
+  collector's relative imports.
+
+The final independent reviewer approved the GUID ownership model and reversible
+settings behavior after behavioral PowerShell harness tests. Real Task Scheduler
+service acceptance remains part of Task 8.
+
+### Task 7: Open-source release surface
+
+Completed in `c3b8b73`.
+
+- MIT license.
+- Public README with architecture, setup, security, Windows collector, Kindle,
+  RTC recovery, and preview links.
+- Generic public defaults with no owner-specific deployment or identity.
+- `.env.example` for private live mode and dual-window manual fallback.
+- Security, architecture, Vercel, and Windows runbooks.
+- Tracked 758x1024 grayscale DP75SDI fixture preview.
+- Release-hygiene tests prevent personal URL/default regressions.
+
+## Verification Evidence
+
+Fresh verification in the active recovery clone on 2026-07-11:
+
+- `npm.cmd test`: 130 passed, 0 failed, 0 cancelled.
+- `npm.cmd run build`: exit 0.
+- Build routes: static `/`; dynamic `/api/dashboard` and `/api/usage`.
+- Every `kindle-extension/**/*.sh`: `bash -n` passed using Git for Windows Bash.
+- Every Windows collector script: parsed by Windows PowerShell through the test
+  suite.
+- `git diff --check`: exit 0.
+- Tracked fixture: 758x1024, 8-bit grayscale, PNG color type 0.
+- Local `next start` HTTP smoke: status 200, `image/png`, `no-store`, 758x1024,
+  one-channel 8-bit grayscale, 28,362 bytes.
+
+## Final Review History
+
+The first whole-release review found ten important issues: incorrect environment
+names, Kindle certificate bypass and xtrace leakage, Blob cache/CAS behavior,
+provider freshness, reinstall backup loss, task ownership, Windows command-shim
+launching, local-state durability, release hygiene, and imprecise privacy text.
+They were fixed in `c44bc27` and covered by regression tests.
+
+The second review found four remaining issues: generic first-create Blob conflict
+handling, lock-file reclaim TOCTOU, scheduled-task ownership TOCTOU, and uninstall
+overwriting later Claude settings. They were fixed in `104fe9c` by narrowing Blob
+conflicts, removing the unnecessary uploader lock, introducing manifest-owned
+GUID tasks with repeated action validation, and restoring only `statusLine`.
+
+The final reviewer then reproduced a delayed older quota overwriting newer data
+after a CAS retry. `3d7f351` made provider timestamps monotonic on both server and
+local state and added the exact delayed-upload regression. The same review raised
+schema-1 migration conditionally; it is not an active blocker because the remote
+branch never contained an installer and the local machine has neither the old
+fixed task nor a GUID uploader task. Final re-review result: `APPROVED`, focused
+tests 59/59 and full tests 130/130.
+
+The only test warning is Node's `MODULE_TYPELESS_PACKAGE_JSON` reparse warning for
+`app/api/usage/route.js`. Adding `type: module` is not a safe one-line change
+because `next.config.js` is CommonJS. It is non-blocking and should be addressed
+only as a deliberate module-system migration.
+
+## Git And Review State
+
+Latest local release-candidate commits, newest first:
+
+```text
+3d7f351 Prevent stale quota rollback
+104fe9c Resolve final release race conditions
+c44bc27 Fix release security and durability findings
+de4887a Update recovery release handoff
+dbb15c4 Fix installed collector runtime dependencies
+c3b8b73 Prepare open-source v1 release
+468ce2e Fix Windows installer rollback safety
+b095b9b Add reversible Windows collector install
+e7fb5d9 Mark Codex uploader review complete
+bb633d8 Fix Codex quota uploader review findings
+e6a5051 Add Codex quota uploader
+fecb030 Mark Claude collector review complete
+5bb98e5 Fix Claude quota collector durability
+6f03301 Add Claude quota status collector
+```
+
+Do not commit these untracked diagnostics:
+
+- `docs/superpowers/*-red.txt`
+- `docs/superpowers/task-*-review.diff`
+- `docs/superpowers/task-5-review.md`
+- `node_modules.junction.backup/`
+- `node_modules.partial.junction.20260710115202/`
+
+The shell Git remote cannot reach `github.com:443` in the current sandbox, but
+the connected GitHub app is available. If publication uses GitHub's Git Data API,
+record that the remote commit is a squash snapshot of the reviewed local tree;
+the local granular commits remain the audit trail.
+
+## Production Configuration Contract
+
+The Vercel project must contain these secret/config values. Never write their
+values into Git, screenshots, issue text, command history, or this handoff.
+
+- `BLOB_READ_WRITE_TOKEN`
+- `DASHBOARD_INGEST_TOKEN`
+- `DASHBOARD_VIEW_TOKEN` (optional, but recommended for a private device URL)
+
+Manual fixture variables remain optional and are not substitutes for live
+subscription quota. Provider API keys are intentionally not used: OpenAI and
+Anthropic API billing endpoints do not expose the user's Codex/Claude subscription
+5-hour and weekly limits.
+
+## Windows Collector Acceptance
+
+After production deployment is verified, install from an ordinary PowerShell
+session in the recovery clone:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\collector\install-windows.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\collector\diagnose-windows.ps1
+```
+
+The installer should prompt privately for the production ingest URL/token. The
+diagnostic may report existence, task state, and versions only. It must not print
+the URL query, bearer token, Claude payload, Codex payload, or stored snapshot.
+
+Then trigger one collection cycle and confirm only a successful status and
+fresh timestamp. Do not paste raw collector config or state into a task.
+
+## Mounted Kindle State
+
+At the latest read-only audit, `D:` was mounted and
+`<KINDLE_DRIVE>:\extensions\kindle-dash` existed.
+
+- Matching files: `diagnose.sh`, `local/dashboard-utils.sh`,
+  `local/display-once.sh`, `local/display-test-frame.sh`,
+  `local/get-battery-level.sh`, `low-power-test.sh`, `refresh-now.sh`,
+  `start.sh`, `stop.sh`, `test-frame.png`, and `wait-for-wifi.sh`.
+- Different files that must be synchronized after production verification:
+  `dash.sh`, `local/fetch-dashboard.sh`, and `menu.json`.
+- `local/env.sh` intentionally differs because it owns the private deployment
+  URL. Preserve that file and update only the URL/view key when production auth
+  is confirmed; never replace it with the public placeholder file.
+
+Current sandbox policy permits reading `D:` but may reject writes. Do not claim
+the Kindle was updated unless hashes are re-read after a successful copy.
+
+## Task 8: Pending External Rollout
+
+1. Publish the release-candidate snapshot to `codex/live-quota-v1`.
+2. Open a PR against `main`, wait for checks, and merge only the reviewed SHA.
+3. Confirm Vercel production points at the merged SHA.
+4. Configure private Blob and the three production values without exposing them.
+5. POST one synthetic normalized snapshot and verify a protected production PNG.
+6. Install and diagnose the real Windows collector.
+7. Synchronize the Kindle extension and private dashboard URL.
+8. On Kindle, run Display Test Frame, Cached Dashboard, live refresh, and a full
+   13-minute cycle (initial refresh plus one 12-minute scheduled refresh).
+9. Confirm the device remains responsive, battery percentage changes correctly,
+   no native Kindle UI overlays the image, and Stop Dashboard restores the UI.
+
+The Vercel CLI bootstrap attempt in this sandbox could not reach the npm registry
+and failed with an access/network error. This is an execution-environment blocker,
+not a project build failure. Use the connected browser session or a normal local
+terminal for Vercel-only operations if the CLI remains unavailable.
+
+## Not Yet Complete
+
+- GitHub branch publication, PR checks, and merge evidence.
+- Vercel production SHA and deployment health evidence.
+- Private Blob/token configuration and synthetic production ingest.
+- Real Claude/Codex collector installation and first successful upload.
+- Final Kindle file synchronization and 13-minute acceptance.
+- Public v1.0.0 tag/release.
+
+## Later Optimizations
+
+- Add the exact accepted 8192-byte ingest-boundary test.
+- Migrate the project consistently to ESM or remove the module-type warning by a
+  deliberate config change.
+- Add CI jobs for Node tests, Next build, Windows PowerShell parser tests, shell
+  syntax, release hygiene, and fixture metadata.
+- Add a redacted collector health timestamp to diagnostics.
+- Add a signed local dry-run mode that prints normalized field names only.
+- Add a cross-process Windows stress harness for simultaneous manual uploader
+  launches; server-side CAS already prevents dashboard rollback.
+- Test real sleep/wake behavior across additional Kindle firmware revisions.
+- Tag and publish v1 only after a second device completes the runbook.
+
+## Next Agent Startup
+
+```powershell
+Set-Location '<WORKSPACE>\kindle-llm-dash\.recovery\live-quota'
+git status --short --branch
+git log --oneline --decorate -15
+npm.cmd test
+npm.cmd run build
+```
+
+Then read, in order:
+
+1. `docs/RECOVERY_HANDOFF_2026-07-10.md`
+2. `README.md`
+3. `docs/superpowers/specs/2026-07-10-live-quota-dashboard-design.md`
+4. `docs/superpowers/plans/2026-07-10-live-quota-dashboard.md`
+5. `docs/SECURITY.md`
+6. `docs/WINDOWS-COLLECTOR.md`
+
+Do not redo Tasks 1-7 unless fresh evidence finds a regression. Resume at the
+first unchecked Task 8 item. Before each push or merge, record local commit,
+GitHub branch/PR SHA, check status, and Vercel production SHA separately.
+
+## Release Decision
+
+The source release candidate is independently approved and locally ready for
+publication. The project is not yet a completed public v1 or a completed
+real-device live-quota installation until Task 8's GitHub, Vercel, collector, and
+Kindle evidence is recorded.

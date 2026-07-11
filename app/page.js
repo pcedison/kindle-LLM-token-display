@@ -33,7 +33,7 @@ export default function ConfigPage() {
     const baseUrl =
       typeof window !== 'undefined'
         ? window.location.origin
-        : 'https://your-vercel-domain.vercel.app';
+        : 'https://your-project.vercel.app';
     const params = new URLSearchParams({
       profile,
       claude: String(showClaude),
