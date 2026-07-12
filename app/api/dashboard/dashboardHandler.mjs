@@ -17,17 +17,21 @@ function isVisible(searchParams, key, defaultVisible) {
   return value !== 'false' && value !== '0' && value !== 'off';
 }
 
-function todayLabel(now) {
-  return new Date(now)
-    .toLocaleString('sv-SE', {
-      timeZone: 'Asia/Taipei',
-      hour12: false,
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-    .replace(' ', ' / ');
+export function formatDashboardTimestamp(now) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Taipei',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(now));
+  const values = Object.fromEntries(
+    parts
+      .filter(({ type }) => type !== 'literal')
+      .map(({ type, value }) => [type, value]),
+  );
+  return `${values.month}/${values.day} / ${values.hour}:${values.minute}`;
 }
 
 function renderBatteryIndicator(battery) {
@@ -301,7 +305,7 @@ function renderDashboard({ providers, layout, battery, pikachuSrc, now }) {
         },
       },
       renderBatteryIndicator(battery),
-      h('span', { style: { fontSize: 18, fontWeight: 900, lineHeight: 1 } }, todayLabel(now)),
+      h('span', { style: { fontSize: 18, fontWeight: 900, lineHeight: 1 } }, formatDashboardTimestamp(now)),
     ),
     ...providers.map((provider, index) =>
       renderProviderCard(provider, layout.cards[index], layout, index, pikachuSrc)),
