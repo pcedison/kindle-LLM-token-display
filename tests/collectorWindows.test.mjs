@@ -42,6 +42,10 @@ function runPowerShellHarness(buildScript) {
   }
 }
 
+if (process.platform !== 'win32') {
+  test('Windows collector integration tests require Windows', { skip: true }, () => {});
+} else {
+
 test('all Windows scripts parse with Windows PowerShell', () => {
   for (const file of Object.values(files)) {
     const command = [
@@ -594,3 +598,4 @@ catch { $failure = $_.Exception.Message }
   assert.equal(result.observation?.failure, null);
   assert.equal(result.observation?.taskCalls.some((call) => call.includes('/Delete')), false);
 });
+}

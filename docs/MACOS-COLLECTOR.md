@@ -16,6 +16,8 @@ The installer prompts for `DASHBOARD_INGEST_TOKEN`, stores it as the `KindleLLMD
 
 The per-user `com.kindle-llm-dashboard.sync` LaunchAgent runs once at login and every 720 seconds while the user session is awake. It does not keep the Mac awake and does not run as a server. Claude status-line events launch a separate bounded one-shot upload without querying Codex.
 
+The Mac does not need to remain on for Vercel or the Kindle to keep displaying the last accepted snapshot. Codex activity from mobile or cloud sessions is corrected at the next successful desktop poll. Claude mobile activity is corrected after the next Claude Code response on an enrolled desktop. Delayed sync labels are expected when no desktop has observed newer provider state.
+
 The installer refuses to replace an unrelated Claude status line or LaunchAgent. Use `--replace-existing-status-line` only after reviewing the timestamped settings backup.
 
 ## Diagnose

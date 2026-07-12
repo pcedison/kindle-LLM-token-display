@@ -26,6 +26,8 @@ Diagnostics intentionally show only booleans and a Node major-version class, inc
 
 The first Claude snapshot appears only after an assistant response. Codex must be signed in with ChatGPT. A failed provider does not erase the last valid other-provider snapshot; upload retry uses a bounded backoff.
 
+The task is not a server, and Windows does not need to remain on for Vercel or the Kindle to keep displaying the last accepted snapshot. Codex activity from mobile or cloud sessions is corrected at the next successful 12-minute desktop poll. Claude mobile activity is corrected after the next Claude Code response on an enrolled desktop. A last-sync marker or `SYNC PENDING` row is therefore an expected consistency signal, not a Kindle display failure.
+
 ## Rotate or Recover
 
 To rotate the ingest token, change `DASHBOARD_INGEST_TOKEN` in Vercel and rerun the installer with the same ingest URL. A failed reinstall restores the prior project install and Claude settings. Timestamped Claude backups are retained outside the project install directory.

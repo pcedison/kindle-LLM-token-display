@@ -41,13 +41,14 @@ test('ships an MIT license and public documentation set', () => {
   }
 });
 
-test('ships pull-request CI for Windows behavior and Kindle shell syntax', () => {
+test('ships pull-request CI for Windows, macOS, and Kindle shell behavior', () => {
   const workflowPath = '.github/workflows/ci.yml';
   assert.ok(existsSync(new URL(`../${workflowPath}`, import.meta.url)), `${workflowPath} must exist`);
   const workflow = read(workflowPath);
   assert.match(workflow, /pull_request:/);
   assert.match(workflow, /push:/);
   assert.match(workflow, /windows-latest/);
+  assert.match(workflow, /macos-latest/);
   assert.match(workflow, /ubuntu-latest/);
   assert.match(workflow, /actions\/checkout@v6/);
   assert.match(workflow, /actions\/setup-node@v6/);
@@ -119,7 +120,7 @@ test('README links setup, security, architecture, collector, RTC, and preview', 
   const readme = read('README.md');
   const windowsCollector = read('docs/WINDOWS-COLLECTOR.md');
   for (const link of [
-    'docs/VERCEL-SETUP.md', 'docs/WINDOWS-COLLECTOR.md', 'docs/SECURITY.md',
+    'docs/VERCEL-SETUP.md', 'docs/WINDOWS-COLLECTOR.md', 'docs/MACOS-COLLECTOR.md', 'docs/SECURITY.md',
     'docs/ARCHITECTURE.md', 'docs/superpowers/specs/2026-07-10-kindle-battery-low-power-design.md',
     'docs/images/dashboard-dp75sdi.png',
   ]) assert.ok(readme.includes(link), link);
@@ -127,4 +128,17 @@ test('README links setup, security, architecture, collector, RTC, and preview', 
   assert.match(readme, /Kindle LLM Quota Uploader-<GUID>/);
   assert.match(windowsCollector, /manifest-owned GUID task/);
   assert.ok(existsSync(new URL('../docs/images/dashboard-dp75sdi.png', import.meta.url)));
+});
+
+test('public docs explain 12-minute collection and mobile eventual consistency', () => {
+  const readme = read('README.md');
+  const architecture = read('docs/ARCHITECTURE.md');
+  const security = read('docs/SECURITY.md');
+  const vercel = read('docs/VERCEL-SETUP.md');
+  assert.match(readme, /does not require[\s\S]{0,80}(?:computer|Windows|Mac)[\s\S]{0,80}remain[\s\S]{0,30}on/i);
+  assert.match(readme, /mobile[\s\S]{0,120}next[\s\S]{0,60}desktop/i);
+  assert.match(readme, /Claude[\s\S]{0,120}next[\s\S]{0,60}response/i);
+  assert.match(architecture, /720 seconds|12 minutes/i);
+  assert.match(security, /version 2/i);
+  assert.match(vercel, /provider OAuth[\s\S]{0,80}(?:local|official client)/i);
 });
