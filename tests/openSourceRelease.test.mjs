@@ -13,6 +13,16 @@ const trackedFiles = execFileSync('git', [
   cwd: repositoryRoot,
   encoding: 'utf8',
 }).split('\0').filter(Boolean);
+const trackedModes = new Map(execFileSync('git', [
+  '-c', `safe.directory=${repositoryRoot}`,
+  'ls-files', '-s', '-z',
+], {
+  cwd: repositoryRoot,
+  encoding: 'utf8',
+}).split('\0').filter(Boolean).map((entry) => {
+  const match = entry.match(/^(\d+)\s+[0-9a-f]+\s+\d+\t(.+)$/);
+  return [match?.[2], match?.[1]];
+}));
 
 const publicTextFiles = trackedFiles.filter((path) => {
   if (path === 'tests/openSourceRelease.test.mjs' || path.endsWith('.png')) return false;
@@ -83,6 +93,15 @@ test('local environment files are ignored and only the example is tracked', () =
     trackedFiles.filter((path) => /^\.env(?:\.|$)/.test(path)),
     ['.env.example'],
   );
+});
+
+test('tracked collector and Kindle shell entrypoints are executable', () => {
+  const scripts = trackedFiles.filter((path) =>
+    path.endsWith('.sh') && (path.startsWith('collector/') || path.startsWith('kindle-extension/')));
+  assert.ok(scripts.length > 0);
+  for (const script of scripts) {
+    assert.equal(trackedModes.get(script), '100755', script);
+  }
 });
 
 test('handoff uses the runtime environment variable names and precise privacy language', () => {

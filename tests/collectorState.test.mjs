@@ -49,7 +49,9 @@ test('durability syncs the temporary file and containing directory', async () =>
   }
 });
 
-test('atomic state write retries transient Windows rename contention', async () => {
+test('atomic state write retries transient Windows rename contention', {
+  skip: process.platform !== 'win32',
+}, async () => {
   const root = await mkdtemp(join(tmpdir(), 'collector-rename-retry-'));
   let renameCalls = 0;
   const fakeHandle = () => ({ writeFile: async () => {}, sync: async () => {}, close: async () => {} });
