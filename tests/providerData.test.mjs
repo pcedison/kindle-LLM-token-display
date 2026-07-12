@@ -134,6 +134,35 @@ test('provider freshness wins over a newer global upload timestamp', () => {
   assert.equal(cards[1].stale, true);
 });
 
+test('provider sync marker uses the oldest delayed live window', () => {
+  const cards = getProviderCards({
+    snapshot: {
+      version: 2,
+      collectedAt: '2026-07-10T09:20:00.000Z',
+      providers: {
+        claude: {
+          windows: {
+            fiveHour: {
+              usedPercent: 10,
+              resetsAt: 1784242800,
+              collectedAt: '2026-07-10T09:20:00.000Z',
+            },
+            sevenDay: {
+              usedPercent: 20,
+              resetsAt: 1784250000,
+              collectedAt: '2026-07-10T09:00:00.000Z',
+            },
+          },
+        },
+      },
+    },
+    now: Date.parse('2026-07-10T10:00:00.000Z'),
+    timeZone: 'Asia/Taipei',
+  });
+
+  assert.equal(cards[0].syncLabel, 'SYNC 17:00');
+});
+
 test('window display preserves fractional remaining quota in its label and progress', () => {
   assert.deepEqual(getWindowDisplay(
     { usedPercent: 17.5, resetsAt: 1783678020 },

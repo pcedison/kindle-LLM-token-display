@@ -136,3 +136,20 @@ test('collector lock replaces a stale lock before running', async () => {
   await assert.rejects(readFile(join(root, 'collector.lock')), { code: 'ENOENT' });
   await rm(root, { recursive: true, force: true });
 });
+
+test('collector lock treats a fresh partially written lock as active', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'collector-partial-lock-'));
+  await writeFile(join(root, 'collector.lock'), '{"pid":');
+  let actionCalls = 0;
+
+  const result = await withCollectorLock({
+    stateRoot: root,
+    now: Date.now,
+    staleAfterMs: 120000,
+    action: async () => { actionCalls += 1; },
+  });
+
+  assert.deepEqual(result, { skipped: true, reason: 'locked' });
+  assert.equal(actionCalls, 0);
+  await rm(root, { recursive: true, force: true });
+});

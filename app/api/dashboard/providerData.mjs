@@ -112,7 +112,7 @@ function windowCollectedAt(snapshot, provider, window) {
   return window?.collectedAt || provider?.collectedAt || snapshot?.collectedAt;
 }
 
-function staleWindowSyncLabel(window, collectedAt, now, timeZone) {
+function staleWindowSync(window, collectedAt, now, timeZone) {
   const collectedAtMs = new Date(collectedAt).getTime();
   if (!isLiveWindow(window)
     || !Number.isFinite(collectedAtMs)
@@ -127,7 +127,7 @@ function staleWindowSyncLabel(window, collectedAt, now, timeZone) {
     minute: '2-digit',
     hourCycle: 'h23',
   }).format(new Date(collectedAtMs));
-  return `SYNC ${syncTime}`;
+  return { collectedAtMs, label: `SYNC ${syncTime}` };
 }
 
 function resolveOptions(options) {
@@ -185,14 +185,15 @@ export function getProviderCards(options = {}) {
     const hasManualData = Object.keys(manualWindows).length > 0;
     const source = hasLiveData ? 'live' : hasManualData ? 'manual' : 'missing';
 
-    const staleLabels = Object.keys(WINDOW_CONFIG)
-      .map((windowKey) => staleWindowSyncLabel(
+    const staleWindows = Object.keys(WINDOW_CONFIG)
+      .map((windowKey) => staleWindowSync(
         liveWindows[windowKey],
         windowCollectedAt(snapshot, liveProvider, liveWindows[windowKey]),
         currentTime,
         timeZone,
       ))
-      .filter(Boolean);
+      .filter(Boolean)
+      .sort((left, right) => left.collectedAtMs - right.collectedAtMs);
 
     return {
       queryKey: provider.queryKey,
@@ -200,8 +201,8 @@ export function getProviderCards(options = {}) {
       displayName: provider.displayName,
       vendorLabel: provider.vendorLabel,
       source,
-      stale: hasLiveData && staleLabels.length > 0,
-      syncLabel: staleLabels[0],
+      stale: hasLiveData && staleWindows.length > 0,
+      syncLabel: staleWindows[0]?.label,
       windows: Object.fromEntries(Object.keys(WINDOW_CONFIG).map((windowKey) => [
         windowKey,
         hasLiveData

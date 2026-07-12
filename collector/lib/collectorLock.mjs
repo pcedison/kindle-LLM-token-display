@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, rm } from 'node:fs/promises';
+import { mkdir, open, readFile, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 function currentMilliseconds(now) {
@@ -54,8 +54,17 @@ export async function withCollectorLock({
         const existing = JSON.parse(await readFile(lockPath, 'utf8'));
         const created = Date.parse(existing?.createdAt);
         stale = Number.isFinite(created) && createdAtMs - created > staleAfterMs;
-      } catch {
-        stale = true;
+      } catch (readError) {
+        if (readError?.code === 'ENOENT') {
+          stale = true;
+        } else {
+          try {
+            const metadata = await stat(lockPath);
+            stale = createdAtMs - metadata.mtimeMs > staleAfterMs;
+          } catch {
+            stale = false;
+          }
+        }
       }
 
       if (!stale || attempt > 0) {
