@@ -81,14 +81,19 @@ Supported profiles:
 | `voyage` | `1080x1440` | Kindle Voyage |
 | `basic` | `600x800` | Kindle Basic |
 
-Copy `kindle-extension` to `<KINDLE_DRIVE>:\extensions\kindle-dash`, then edit `local/env.sh` and replace the generic dashboard hostname. Keep portrait dimensions and the 12-minute default:
+Copy `kindle-extension` to `<KINDLE_DRIVE>:\extensions\kindle-dash`, then edit
+`local/env.sh` and replace the generic hostname in both managed URLs. Keep the
+12-minute local fallback:
 
 ```sh
-export DASHBOARD_URL="https://your-project.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&claude=true&openai=true&gemini=false"
+export DASHBOARD_URL="https://your-project.vercel.app/api/dashboard?profile=dp75sdi&managed=true"
+export REMOTE_CONFIG_URL="https://your-project.vercel.app/api/device-config?profile=dp75sdi"
 export REFRESH_INTERVAL_SECS=720
 ```
 
-If view protection is enabled, append `key=YOUR_VIEW_TOKEN` to the private local URL. Never commit that edited device file.
+If view protection is enabled, append `&key=YOUR_VIEW_TOKEN` to
+`DASHBOARD_URL` and `&key=YOUR_VIEW_TOKEN` to `REMOTE_CONFIG_URL`. Both
+endpoints use the same view token. Never commit that edited device file.
 
 Safely eject the Kindle and use KUAL in this order:
 
@@ -99,6 +104,36 @@ Safely eject the Kindle and use KUAL in this order:
 The proven DP75SDI path keeps the Kindle framework running and does not clear the panel before `eips`. Leave `DASHBOARD_USE_RTC=false` until the 60-second probe records `WAKE_SUCCESS`. The staged RTC procedure is documented in the [DP75SDI battery and low-power design](docs/superpowers/specs/2026-07-10-kindle-battery-low-power-design.md).
 
 `Start LLM Token Dashboard` hides Pillow and pauses the `awesome` window manager after KUAL closes so the native Wi-Fi, battery, and clock bar cannot redraw over the PNG. Press the physical power button once to exit dashboard mode; if the native sleep screen appears, press it again to return to Kindle. `Stop Dashboard / Restore Kindle`, normal daemon exit, and termination also restore system chrome without stopping the Kindle framework.
+
+## Remote Dashboard Settings
+
+Open the deployment root, choose a Kindle profile, and unlock the editor with
+`DASHBOARD_ADMIN_TOKEN`. The editor controls provider visibility, separate
+Claude Code and Codex artwork, and the Kindle refresh interval. Source artwork
+may be PNG, JPEG, or WebP up to 5 MiB; the browser places it on white and
+contain-fits it to an opaque `104 x 96` PNG without cropping or stretching.
+
+The refresh menu allows 10-50 seconds as explicit high-power test settings and
+every whole minute from 1-15 minutes. Twelve minutes remains the recommended
+continuous-display setting. Save creates a profile-scoped private configuration
+and previews this managed PNG URL:
+
+```text
+https://your-project.vercel.app/api/dashboard?profile=dp75sdi&managed=true
+```
+
+Remote management needs a one-time USB migration of the Kindle extension and
+its stable managed URLs. After that migration, changing artwork, providers, or
+refresh cadence in the web editor needs no USB connection. The Kindle checks
+`/api/device-config` before each PNG fetch and keeps its last valid interval and
+cached PNG if the remote setting cannot be read.
+
+For an existing installation, stop the dashboard, copy the updated extension
+files over `extensions/kindle-dash` while preserving the private values in
+`local/env.sh`, then replace only the two URLs with the managed forms above.
+Safely eject and start the dashboard again. To roll back, restore the previous
+query-driven `DASHBOARD_URL`, leave `REMOTE_CONFIG_URL` empty, and keep
+`REFRESH_INTERVAL_SECS=720`; cached display and local cadence continue to work.
 
 ## Display Behavior
 

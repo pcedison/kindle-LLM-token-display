@@ -119,3 +119,43 @@ test('DEBUG launcher sources the private URL without writing it to xtrace', () =
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('remote config xtrace forwards its private URL without logging it', () => {
+  const { directory, shellPath } = makeFixture();
+  const capturePath = join(directory, 'remote-url');
+  const privateUrl =
+    'https://example.test/api/device-config?profile=dp75sdi&key=REMOTE_KEY_MUST_STAY_PRIVATE';
+
+  writeFileSync(
+    join(directory, 'wget'),
+    `#!/usr/bin/env sh
+out=''
+url=''
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -O) shift; out=$1 ;;
+    https://*) url=$1 ;;
+  esac
+  shift
+done
+printf 'version=1\nrefresh_interval_seconds=720\n' > "$out"
+printf '%s\n' "$url" > "$CAPTURE"
+`,
+  );
+
+  try {
+    const result = runShell(
+      `chmod +x "${shellPath}/wget"; PATH="${shellPath}:$PATH" CAPTURE="${shellPath}/remote-url" sh -x ./kindle-extension/local/fetch-remote-config.sh`,
+      { REMOTE_CONFIG_URL: privateUrl },
+    );
+    const logs = `${result.stdout}${result.stderr}`;
+
+    assert.equal(result.status, 0, logs);
+    assert.equal(result.stdout.trim(), '720');
+    assert.equal(readFileSync(capturePath, 'utf8').trim(), privateUrl);
+    assert.doesNotMatch(logs, /REMOTE_KEY_MUST_STAY_PRIVATE/);
+    assert.doesNotMatch(logs, /https:\/\/example\.test\/api\/device-config/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

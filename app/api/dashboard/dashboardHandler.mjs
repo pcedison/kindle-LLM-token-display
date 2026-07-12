@@ -1,6 +1,7 @@
 import { ImageResponse } from 'next/og.js';
 import { createElement as h } from 'react';
 
+import { readDashboardConfig } from '../config/dashboardConfigStore.mjs';
 import { getBatteryStatus } from './batteryStatus.mjs';
 import { makeOpaqueGrayscalePng } from './kindlePng.mjs';
 import { resolveDashboardProfile } from './kindleProfiles.mjs';
@@ -165,7 +166,7 @@ function renderQuotaRow(window, row, card, layout, rowIndex) {
   );
 }
 
-function renderProviderCard(provider, card, layout, index, pikachuSrc) {
+function renderProviderCard(provider, card, layout, index, artwork, defaultArtworkSrc) {
   const title = provider.displayName || provider.name;
   const titleFont = title.length > 10 ? layout.titleFont.long : layout.titleFont.short;
   const titleChildren = [
@@ -209,7 +210,7 @@ function renderProviderCard(provider, card, layout, index, pikachuSrc) {
   if (layout.showPikachu) {
     titleChildren.push(h('img', {
       key: 'pikachu',
-      src: pikachuSrc,
+      src: artwork[provider.queryKey] || defaultArtworkSrc,
       width: 104,
       height: 96,
       style: {
@@ -272,7 +273,7 @@ function emptyProviderCard() {
   };
 }
 
-function renderDashboard({ providers, layout, battery, pikachuSrc, now }) {
+function renderDashboard({ providers, layout, battery, artwork, defaultArtworkSrc, now }) {
   return h(
     'div',
     {
@@ -308,7 +309,14 @@ function renderDashboard({ providers, layout, battery, pikachuSrc, now }) {
       h('span', { style: { fontSize: 18, fontWeight: 900, lineHeight: 1 } }, formatDashboardTimestamp(now)),
     ),
     ...providers.map((provider, index) =>
-      renderProviderCard(provider, layout.cards[index], layout, index, pikachuSrc)),
+      renderProviderCard(
+        provider,
+        layout.cards[index],
+        layout,
+        index,
+        artwork,
+        defaultArtworkSrc,
+      )),
   );
 }
 
@@ -316,6 +324,7 @@ export function createDashboardHandler({
   env = process.env,
   now = Date.now,
   readQuotaSnapshot: readSnapshot = readQuotaSnapshot,
+  readDashboardConfig: readConfig = readDashboardConfig,
   resolvePikachuSrc = (request) => new URL('/pikachu-line.png', request.url).toString(),
 } = {}) {
   return async function dashboardHandler(request) {
@@ -330,19 +339,36 @@ export function createDashboardHandler({
     const snapshot = await readSnapshot();
     const renderNow = now();
     const cards = getProviderCards({ snapshot, env, now: renderNow });
-    const visibleProviders = cards.filter((provider) =>
-      isVisible(url.searchParams, provider.queryKey, provider.defaultVisible));
-    const providers = visibleProviders.length > 0 ? visibleProviders : [emptyProviderCard()];
     const profile = resolveDashboardProfile(url.searchParams);
+    const managed = url.searchParams.get('managed') === 'true';
+    const config = managed ? await readConfig(profile.key) : null;
+    const visibleProviders = cards.filter((provider) =>
+      managed
+        ? config.providers[provider.queryKey].visible
+        : isVisible(url.searchParams, provider.queryKey, provider.defaultVisible));
+    const providers = visibleProviders.length > 0 ? visibleProviders : [emptyProviderCard()];
     const layout = getQuotaLayout({
       width: profile.width,
       height: profile.height,
       providerCount: providers.length,
     });
     const battery = getBatteryStatus(url.searchParams);
-    const pikachuSrc = resolvePikachuSrc(request);
+    const defaultArtworkSrc = resolvePikachuSrc(request);
+    const artwork = managed
+      ? {
+        claude: config.providers.claude.imageDataUrl,
+        openai: config.providers.openai.imageDataUrl,
+      }
+      : {};
     const imageResponse = new ImageResponse(
-      renderDashboard({ providers, layout, battery, pikachuSrc, now: renderNow }),
+      renderDashboard({
+        providers,
+        layout,
+        battery,
+        artwork,
+        defaultArtworkSrc,
+        now: renderNow,
+      }),
       { width: profile.width, height: profile.height },
     );
     const imageBytes = new Uint8Array(await imageResponse.arrayBuffer());

@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import net from 'node:net';
 import test from 'node:test';
 import { inflateSync } from 'node:zlib';
+import UPNG from 'upng-js';
 
 import { createDashboardHandler } from '../app/api/dashboard/dashboardHandler.mjs';
 import { getQuotaLayout } from '../app/api/dashboard/layoutModel.mjs';
@@ -16,6 +17,38 @@ const FIXED_NOW_SECONDS = Math.floor(FIXED_NOW / 1000);
 const PIKACHU_DATA_URL = `data:image/png;base64,${readFileSync(
   new URL('../public/pikachu-line.png', import.meta.url),
 ).toString('base64')}`;
+
+function solidArtworkDataUrl(gray) {
+  const rgba = new Uint8Array(104 * 96 * 4);
+  for (let index = 0; index < rgba.length; index += 4) {
+    rgba[index] = gray;
+    rgba[index + 1] = gray;
+    rgba[index + 2] = gray;
+    rgba[index + 3] = 255;
+  }
+  const png = Buffer.from(UPNG.encode([rgba.buffer], 104, 96, 0));
+  return `data:image/png;base64,${png.toString('base64')}`;
+}
+
+function managedConfig({
+  claudeVisible = true,
+  openaiVisible = true,
+  geminiVisible = false,
+  claudeArtwork = null,
+  openaiArtwork = null,
+} = {}) {
+  return {
+    version: 1,
+    profile: 'dp75sdi',
+    refreshIntervalSeconds: 720,
+    providers: {
+      claude: { visible: claudeVisible, imageDataUrl: claudeArtwork },
+      openai: { visible: openaiVisible, imageDataUrl: openaiArtwork },
+      gemini: { visible: geminiVisible },
+    },
+    updatedAt: new Date(FIXED_NOW).toISOString(),
+  };
+}
 
 function reservePort() {
   return new Promise((resolve, reject) => {
@@ -110,12 +143,19 @@ function liveSnapshot(overrides = {}) {
   };
 }
 
-async function renderFixture({ snapshot = null, env = {}, query = '' } = {}) {
+async function renderFixture({
+  snapshot = null,
+  env = {},
+  query = '',
+  readDashboardConfig,
+  resolvePikachuSrc = () => PIKACHU_DATA_URL,
+} = {}) {
   const handler = createDashboardHandler({
     env,
     now: () => FIXED_NOW,
     readQuotaSnapshot: async () => snapshot,
-    resolvePikachuSrc: () => PIKACHU_DATA_URL,
+    readDashboardConfig,
+    resolvePikachuSrc,
   });
   const response = await handler(new Request(`https://dashboard.test/api/dashboard?${query}`));
   assert.equal(response.status, 200);
@@ -143,6 +183,15 @@ function assertBarProgress(png, bar, progress) {
   if (progress < 100) {
     assert.ok(png.pixelAt(Math.min(bar.innerLeft + bar.innerWidth - 1, Math.ceil(boundary + 2)), y) > 240);
   }
+}
+
+function artworkRegion(card) {
+  return {
+    left: card.content.left + card.content.width - 104,
+    top: card.title.top,
+    right: card.content.left + card.content.width,
+    bottom: card.title.top + 96,
+  };
 }
 
 async function waitForServer(origin, output) {
@@ -189,6 +238,112 @@ test('view authorization runs before quota storage access', async () => {
   const response = await handler(new Request('https://dashboard.test/api/dashboard?key=wrong'));
   assert.equal(response.status, 401);
   assert.equal(reads, 0);
+});
+
+test('unmanaged query rendering remains unchanged and never reads dashboard config', async () => {
+  let configReads = 0;
+  const query = 'claude=false&openai=true&gemini=true';
+  const expected = await renderFixture({ snapshot: liveSnapshot(), query });
+  const actual = await renderFixture({
+    snapshot: liveSnapshot(),
+    query,
+    readDashboardConfig: async () => {
+      configReads += 1;
+      return managedConfig({ claudeVisible: true, openaiVisible: false, geminiVisible: false });
+    },
+  });
+
+  assert.equal(configReads, 0);
+  assert.equal(actual.countDifferences(expected, {
+    left: 0,
+    top: 0,
+    right: actual.width,
+    bottom: actual.height,
+  }), 0);
+});
+
+test('managed visibility ignores conflicting provider query flags', async () => {
+  const profiles = [];
+  const expected = await renderFixture({
+    snapshot: liveSnapshot(),
+    query: 'claude=false&openai=true&gemini=false',
+  });
+  const actual = await renderFixture({
+    snapshot: liveSnapshot(),
+    query: 'managed=true&claude=true&openai=false&gemini=true',
+    readDashboardConfig: async (profile) => {
+      profiles.push(profile);
+      return managedConfig({ claudeVisible: false, openaiVisible: true, geminiVisible: false });
+    },
+  });
+
+  assert.deepEqual(profiles, ['dp75sdi']);
+  assert.equal(actual.countDifferences(expected, {
+    left: 0,
+    top: 0,
+    right: actual.width,
+    bottom: actual.height,
+  }), 0);
+});
+
+test('managed Claude and OpenAI artwork render distinct pixels in each artwork region', async () => {
+  const darkArtwork = solidArtworkDataUrl(0);
+  const lightArtwork = solidArtworkDataUrl(224);
+  const [first, swapped] = await Promise.all([
+    renderFixture({
+      snapshot: liveSnapshot(),
+      query: 'managed=true',
+      readDashboardConfig: async () => managedConfig({
+        claudeArtwork: darkArtwork,
+        openaiArtwork: lightArtwork,
+      }),
+    }),
+    renderFixture({
+      snapshot: liveSnapshot(),
+      query: 'managed=true',
+      readDashboardConfig: async () => managedConfig({
+        claudeArtwork: lightArtwork,
+        openaiArtwork: darkArtwork,
+      }),
+    }),
+  ]);
+  const layout = getQuotaLayout({ width: 758, height: 1024, providerCount: 2 });
+
+  for (const card of layout.cards) {
+    assert.ok(
+      first.countDifferences(swapped, artworkRegion(card)) > 8_000,
+      'provider artwork swap should change pixels inside its artwork region',
+    );
+  }
+});
+
+test('managed null artwork independently falls back to the default resolver image', async () => {
+  const defaultArtwork = solidArtworkDataUrl(160);
+  const customArtwork = solidArtworkDataUrl(0);
+  const fixtures = {
+    baseline: managedConfig(),
+    claudeFallback: managedConfig({ openaiArtwork: customArtwork }),
+    openaiFallback: managedConfig({ claudeArtwork: customArtwork }),
+  };
+  const render = (config) => renderFixture({
+    snapshot: liveSnapshot(),
+    query: 'managed=true',
+    readDashboardConfig: async () => config,
+    resolvePikachuSrc: () => defaultArtwork,
+  });
+  const [baseline, claudeFallback, openaiFallback] = await Promise.all([
+    render(fixtures.baseline),
+    render(fixtures.claudeFallback),
+    render(fixtures.openaiFallback),
+  ]);
+  const layout = getQuotaLayout({ width: 758, height: 1024, providerCount: 2 });
+  const claudeRegion = artworkRegion(layout.cards[0]);
+  const openaiRegion = artworkRegion(layout.cards[1]);
+
+  assert.equal(claudeFallback.countDifferences(baseline, claudeRegion), 0);
+  assert.ok(claudeFallback.countDifferences(baseline, openaiRegion) > 8_000);
+  assert.equal(openaiFallback.countDifferences(baseline, openaiRegion), 0);
+  assert.ok(openaiFallback.countDifferences(baseline, claudeRegion) > 8_000);
 });
 
 test('live snapshot renders fractional quota and post-reset sync pending without geometry intrusion', async () => {

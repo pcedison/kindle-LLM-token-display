@@ -6,6 +6,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="$DIR/local/env.sh"
 DASH_PNG="$DIR/dash.png"
 FETCH_DASHBOARD_CMD="$DIR/local/fetch-dashboard.sh"
+FETCH_REMOTE_CONFIG_CMD="$DIR/local/fetch-remote-config.sh"
 DISPLAY_ONCE_CMD="$DIR/local/display-once.sh"
 LOW_BATTERY_CMD="$DIR/local/low-battery.sh"
 POWER_BUTTON_EXIT_CMD="$DIR/local/power-button-exit.sh"
@@ -27,6 +28,8 @@ if [ "$dash_xtrace_enabled" = true ]; then
   set -x
 fi
 unset dash_xtrace_enabled
+
+refresh_interval_secs=${REFRESH_INTERVAL_SECS:-720}
 
 . "$DIR/local/dashboard-utils.sh"
 . "$DIR/local/chrome-control.sh"
@@ -89,7 +92,7 @@ start_power_button_exit_watcher() {
 
 init() {
   echo "Starting LLM token dashboard."
-  echo "Refresh interval: ${REFRESH_INTERVAL_SECS}s."
+  echo "Refresh interval: ${refresh_interval_secs}s."
   echo "Timezone: ${TIMEZONE:-not-set}."
 
   sleep "${KUAL_SETTLE_DELAY_SECS:-3}"
@@ -180,6 +183,22 @@ log_battery_stats() {
   fi
 }
 
+refresh_remote_config() {
+  if [ ! -x "$FETCH_REMOTE_CONFIG_CMD" ]; then
+    echo "Remote config helper unavailable; keeping ${refresh_interval_secs}s."
+    return 1
+  fi
+
+  if remote_interval=$("$FETCH_REMOTE_CONFIG_CMD"); then
+    refresh_interval_secs=$remote_interval
+    echo "Remote refresh interval: ${refresh_interval_secs}s."
+    return 0
+  fi
+
+  echo "Remote config unavailable; keeping ${refresh_interval_secs}s."
+  return 1
+}
+
 sleep_until_next_refresh() {
   duration=${1:-$REFRESH_INTERVAL_SECS}
 
@@ -212,10 +231,10 @@ sleep_until_next_refresh() {
 
 main_loop() {
   while true; do
+    refresh_remote_config || true
     log_battery_stats
     refresh_dashboard
-    sleep 5
-    sleep_until_next_refresh "$REFRESH_INTERVAL_SECS"
+    sleep_until_next_refresh "$refresh_interval_secs"
   done
 }
 
