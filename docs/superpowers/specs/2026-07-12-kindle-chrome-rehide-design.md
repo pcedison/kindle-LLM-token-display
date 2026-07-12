@@ -17,17 +17,21 @@ resume the window manager and restore Pillow unconditionally.
 
 ## Approach
 
-Reuse the existing reversible `hide_kindle_chrome` function instead of stopping
-the full Kindle framework:
+Split the existing reversible chrome control into two ownership levels instead
+of stopping the full Kindle framework:
 
 - Source `local/chrome-control.sh` from `local/display-once.sh`.
-- Call `hide_kindle_chrome` after the KUAL settle delay and before any clear or
-  `eips` draw.
+- Add `hide_kindle_pillow`, which disables Pillow but never pauses `awesome`.
+- Call `hide_kindle_pillow` after the KUAL settle delay and before one-shot
+  `eips` draws. A standalone action has no cleanup or power-button watcher, so
+  it must retain a functioning window manager.
 - Call `hide_kindle_chrome` at the start of `show_dashboard_png` so every daemon
-  refresh repairs chrome that reappeared after startup.
+  refresh repairs chrome that reappeared after startup. The daemon owns cleanup
+  and a power-button watcher, so it may also pause `awesome`.
 
-Repeated Pillow disable and `SIGSTOP` requests are idempotent on the target
-Kindle. No new long-running process or wake behavior is introduced.
+Repeated Pillow disable and daemon-owned `SIGSTOP` requests are idempotent on
+the target Kindle. No standalone path leaves `awesome` stopped. No new
+long-running process or wake behavior is introduced.
 
 ## Alternatives Rejected
 
@@ -40,7 +44,8 @@ Kindle. No new long-running process or wake behavior is introduced.
 
 ## Verification
 
-- Add shell contract tests proving both draw paths hide chrome before `eips`.
+- Add shell tests proving one-shot hide never pauses `awesome`, while daemon
+  draws still use the fully reversible chrome hide before `eips`.
 - Run the full Node test suite and production build.
 - Run shell syntax validation.
 - Copy only the changed Kindle runtime files after the device is mounted, while

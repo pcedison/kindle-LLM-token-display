@@ -9,8 +9,10 @@ mkdir -p "$DIR/logs"
 
 # shellcheck disable=SC1090
 [ -f "$ENV_FILE" ] && . "$ENV_FILE"
+. "$DIR/local/chrome-control.sh"
 
 sleep "${KUAL_SETTLE_DELAY_SECS:-3}"
+hide_kindle_pillow
 
 echo "$(date) display-once: preparing dashboard display" >>"$LOG_FILE"
 
