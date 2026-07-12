@@ -150,11 +150,20 @@ user signs in through official Claude Code and Codex clients instead.
 The last fresh local release gate after all production-code edits reported:
 
 ```text
-npm test: 157 passed, 0 failed
+npm test: 158 passed, 0 failed
 npm run build: passed
 routes: /api/dashboard and /api/usage built as dynamic routes
 git diff --check: passed
 ```
+
+`npm audit` reported two moderate entries and no high or critical entries. Both
+trace to Next.js pinning PostCSS 8.4.31 below the patched PostCSS 8.5.10 release
+for [GHSA-qx2v-qp2m-jg93](https://github.com/advisories/GHSA-qx2v-qp2m-jg93).
+The dashboard does not parse or embed user-supplied CSS, so the advisory's XSS
+path is not exposed here. As of this verification, Next.js 16.2.10 was still
+the latest stable npm release and `npm audit fix` proposed an unsafe downgrade;
+do not force that downgrade. Recheck when a stable Next.js release updates its
+PostCSS dependency.
 
 PR #11 final checks:
 
