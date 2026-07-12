@@ -571,6 +571,155 @@ test('keeps RTC refresh opt-in and falls back to a full userspace sleep', () => 
   assert.match(probe, /find_rtc_wake_source/);
 });
 
+test('remote config helper accepts only the exact refresh allowlist', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-remote-config-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const allowed = [
+    10, 20, 30, 40, 50, 60, 120, 180, 240, 300,
+    360, 420, 480, 540, 600, 660, 720, 780, 840, 900,
+  ];
+
+  writeFileSync(
+    join(directory, 'wget'),
+    '#!/usr/bin/env sh\nout=""\nwhile [ "$#" -gt 0 ]; do\n  case "$1" in -O) shift; out=$1 ;; esac\n  shift\ndone\nprintf "%s" "$REMOTE_BODY" > "$out"\n',
+  );
+
+  try {
+    for (const seconds of allowed) {
+      const result = spawnSync(
+        shell,
+        [shellFlag, `chmod +x "$PWD/${fixture}/wget"; PATH="$PWD/${fixture}:$PATH" REMOTE_CONFIG_URL='https://example.test/device' REMOTE_BODY='version=1\nrefresh_interval_seconds=${seconds}\n' ./kindle-extension/local/fetch-remote-config.sh`],
+        { cwd: process.cwd(), encoding: 'utf8' },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(result.stdout.trim(), String(seconds));
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('remote config helper rejects malformed, duplicate, and unsafe values', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-remote-config-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  writeFileSync(
+    join(directory, 'wget'),
+    '#!/usr/bin/env sh\nout=""\nwhile [ "$#" -gt 0 ]; do\n  case "$1" in -O) shift; out=$1 ;; esac\n  shift\ndone\nprintf "%s" "$REMOTE_BODY" > "$out"\n',
+  );
+
+  const invalidBodies = [
+    '',
+    'version=1\n',
+    'refresh_interval_seconds=59\n',
+    'refresh_interval_seconds=61\n',
+    'refresh_interval_seconds=901\n',
+    'refresh_interval_seconds=60;reboot\n',
+    'refresh_interval_seconds=60\nrefresh_interval_seconds=120\n',
+  ];
+
+  try {
+    for (const body of invalidBodies) {
+      const result = spawnSync(
+        shell,
+        [shellFlag, `chmod +x "$PWD/${fixture}/wget"; PATH="$PWD/${fixture}:$PATH" REMOTE_CONFIG_URL='https://example.test/device' ./kindle-extension/local/fetch-remote-config.sh`],
+        { cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, REMOTE_BODY: body } },
+      );
+      assert.notEqual(result.status, 0, `unexpected success for ${JSON.stringify(body)}`);
+      assert.equal(result.stdout, '');
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('remote config helper fails closed when the download fails', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-remote-config-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  writeFileSync(
+    join(directory, 'wget'),
+    '#!/usr/bin/env sh\nexit 4\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [shellFlag, `chmod +x "$PWD/${fixture}/wget"; PATH="$PWD/${fixture}:$PATH" REMOTE_CONFIG_URL='https://example.test/device?key=PRIVATE_SENTINEL' ./kindle-extension/local/fetch-remote-config.sh`],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+    const output = `${result.stdout}${result.stderr}`;
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout, '');
+    assert.doesNotMatch(output, /PRIVATE_SENTINEL/);
+    assert.doesNotMatch(output, /https:\/\/example\.test/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('remote config helper terminates a stalled HTTP client at its deadline', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-remote-config-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  writeFileSync(
+    join(directory, 'wget'),
+    '#!/usr/bin/env sh\nout=""\nwhile [ "$#" -gt 0 ]; do\n  case "$1" in -O) shift; out=$1 ;; esac\n  shift\ndone\n: > "$out"\ntrap "" TERM\nwhile :; do sleep 1; done\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [shellFlag, `chmod +x "$PWD/${fixture}/wget"; PATH="$PWD/${fixture}:$PATH" REMOTE_CONFIG_TIMEOUT_SECS=1 REMOTE_CONFIG_URL='https://example.test/device' ./kindle-extension/local/fetch-remote-config.sh`],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 5000 },
+    );
+    assert.equal(result.error, undefined, result.error?.message);
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout, '');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('remote config helper terminates an oversized streamed response', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-remote-config-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  writeFileSync(
+    join(directory, 'wget'),
+    '#!/usr/bin/env sh\nout=""\nwhile [ "$#" -gt 0 ]; do\n  case "$1" in -O) shift; out=$1 ;; esac\n  shift\ndone\nhead -c 5000 /dev/zero | tr "\\000" x > "$out"\nexit 0\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [shellFlag, `chmod +x "$PWD/${fixture}/wget"; PATH="$PWD/${fixture}:$PATH" REMOTE_CONFIG_TIMEOUT_SECS=10 REMOTE_CONFIG_URL='https://example.test/device' ./kindle-extension/local/fetch-remote-config.sh`],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 5000 },
+    );
+    assert.equal(result.error, undefined, result.error?.message);
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout, '');
+    const helper = readFileSync(
+      join(process.cwd(), 'kindle-extension', 'local', 'fetch-remote-config.sh'),
+      'utf8',
+    );
+    assert.match(helper, /head -c "\$MAX_RESPONSE_BYTES_PLUS_ONE"/);
+    assert.match(helper, /MAX_RESPONSE_BYTES_PLUS_ONE=4097/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('dashboard daemon refreshes remote settings before PNG and sleeps with the in-memory value', () => {
+  const env = readFileSync(join(process.cwd(), 'kindle-extension', 'local', 'env.sh'), 'utf8');
+  const dash = readFileSync(join(process.cwd(), 'kindle-extension', 'dash.sh'), 'utf8');
+  const mainStart = dash.indexOf('main_loop()');
+  const mainBody = dash.slice(mainStart, dash.indexOf('\n}', mainStart) + 2);
+
+  assert.match(env, /REMOTE_CONFIG_URL=/);
+  assert.match(dash, /local\/fetch-remote-config\.sh/);
+  assert.match(dash, /refresh_interval_secs=\$\{REFRESH_INTERVAL_SECS:-720\}/);
+  assert.ok(mainBody.indexOf('refresh_remote_config') < mainBody.indexOf('refresh_dashboard'));
+  assert.match(mainBody, /sleep_until_next_refresh "\$refresh_interval_secs"/);
+  assert.doesNotMatch(mainBody, /sleep 5/);
+});
+
 test('diagnostics inspect standard Wario RTC interfaces without writing them', () => {
   const diagnose = readFileSync(join(process.cwd(), 'kindle-extension', 'diagnose.sh'), 'utf8');
 

@@ -7,7 +7,7 @@ esac
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 OUT="$1"
-URL=${DASHBOARD_URL:-"https://your-project.vercel.app/api/dashboard?profile=dp75sdi&w=758&h=1024&claude=true&openai=true&gemini=false"}
+URL=${DASHBOARD_URL:-"https://your-project.vercel.app/api/dashboard?profile=dp75sdi&managed=true"}
 
 # shellcheck disable=SC1091
 . "$DIR/dashboard-utils.sh"
