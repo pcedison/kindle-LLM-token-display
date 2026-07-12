@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildMergedLocalSnapshot, uploadSnapshot } from '../collector/lib/uploadClient.mjs';
 import { defaultConfigPath } from '../collector/lib/collectorConfig.mjs';
+import { resolveIngestToken } from '../collector/lib/collectorSecret.mjs';
 
 const validSnapshot = () => ({
   version: 1,
@@ -224,7 +225,7 @@ test('default atomic upload state honors the explicit state root', async () => {
       fetch: async () => new Response('ok', { status: 200 }),
     });
 
-    assert.equal(JSON.parse(await readFile(join(root, 'last-upload.json'), 'utf8')).version, 1);
+    assert.equal(JSON.parse(await readFile(join(root, 'last-upload.json'), 'utf8')).version, 2);
     await assert.rejects(readFile(join(unrelatedRoot, 'last-upload.json')), { code: 'ENOENT' });
   } finally {
     if (prior === undefined) delete process.env.KINDLE_LLM_DASH_STATE_ROOT;
@@ -256,4 +257,27 @@ test('routes failed-upload backoff through the atomic state writer', async () =>
 
 test('uses a safe per-user default config location', () => {
   assert.match(defaultConfigPath(), /KindleLLMDashboard/);
+});
+
+test('resolves the project-owned macOS Keychain secret without mutating config', async () => {
+  const config = {
+    ingestTokenSource: 'macos-keychain',
+    keychainService: 'KindleLLMDashboard.ingest',
+    keychainAccount: 'fixture-user',
+  };
+  let invocation;
+  const token = await resolveIngestToken(config, {
+    platform: 'darwin',
+    execFile: async (...args) => {
+      invocation = args;
+      return { stdout: 'fixture-secret\n' };
+    },
+  });
+
+  assert.equal(token, 'fixture-secret');
+  assert.deepEqual(invocation, [
+    '/usr/bin/security',
+    ['find-generic-password', '-w', '-s', 'KindleLLMDashboard.ingest', '-a', 'fixture-user'],
+  ]);
+  assert.equal(Object.hasOwn(config, 'ingestToken'), false);
 });

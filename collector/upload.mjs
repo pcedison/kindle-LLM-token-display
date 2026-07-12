@@ -1,12 +1,22 @@
-import { readCollectorConfig } from './lib/collectorConfig.mjs';
-import { readCodexRateLimits } from './lib/codexRateLimits.mjs';
-import { buildMergedLocalSnapshot, uploadSnapshot } from './lib/uploadClient.mjs';
-import { stateRoot } from './lib/paths.mjs';
+import { runCollector } from './lib/runCollector.mjs';
+
+function parseArguments(argumentsList) {
+  let mode = 'scheduled-sync';
+  let configPath;
+  for (const argument of argumentsList) {
+    if (argument.startsWith('--mode=')) {
+      mode = argument.slice('--mode='.length);
+    } else if (argument.startsWith('--config=')) {
+      configPath = argument.slice('--config='.length);
+    } else if (!argument.startsWith('--') && !configPath) {
+      configPath = argument;
+    }
+  }
+  return { mode, configPath };
+}
 
 try {
-  const config = await readCollectorConfig(process.argv[2] || undefined);
-  const root = stateRoot();
-  let codex = null; try { codex = { windows: await readCodexRateLimits({ command: config.codexCommand, timeoutMs: config.timeoutMs }) }; } catch {}
-  const snapshot = await buildMergedLocalSnapshot({ stateRoot: root, codex });
-  await uploadSnapshot({ ...config, snapshot, stateRoot: root });
-} catch { process.exitCode = 1; }
+  await runCollector(parseArguments(process.argv.slice(2)));
+} catch {
+  process.exitCode = 1;
+}
