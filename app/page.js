@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   buildManagedUrls,
+  createArtworkErrorFocusRequest,
   formatRefreshOption,
   getArtworkControlNames,
   getArtworkErrorFocusProvider,
@@ -66,7 +67,7 @@ export default function ConfigPage() {
   const [saveState, setSaveState] = useState('saved');
   const [saveError, setSaveError] = useState('');
   const [artworkState, setArtworkState] = useState(EMPTY_ARTWORK_STATE);
-  const [activeArtworkProvider, setActiveArtworkProvider] = useState(null);
+  const [artworkFocusRequest, setArtworkFocusRequest] = useState(null);
   const [viewToken, setViewToken] = useState('');
   const [origin, setOrigin] = useState('');
   const [previewFailed, setPreviewFailed] = useState(false);
@@ -105,10 +106,10 @@ export default function ConfigPage() {
   useEffect(() => {
     const provider = getArtworkErrorFocusProvider({
       artworkState,
-      activeProvider: activeArtworkProvider,
+      focusRequest: artworkFocusRequest,
     });
     if (provider) artworkErrorRefs.current[provider]?.focus();
-  }, [activeArtworkProvider, artworkState]);
+  }, [artworkFocusRequest, artworkState]);
 
   useEffect(() => {
     if (previewFailed) previewErrorRef.current?.focus();
@@ -143,7 +144,7 @@ export default function ConfigPage() {
       setDraft(config);
       setSaveState('saved');
       setArtworkState(EMPTY_ARTWORK_STATE);
-      setActiveArtworkProvider(null);
+      setArtworkFocusRequest(null);
     } catch (error) {
       setUnlockError(error instanceof Error ? error.message : '無法載入遠端設定。');
     } finally {
@@ -161,7 +162,7 @@ export default function ConfigPage() {
     setSaveError('');
     setSaveState('saved');
     setArtworkState(EMPTY_ARTWORK_STATE);
-    setActiveArtworkProvider(null);
+    setArtworkFocusRequest(null);
   };
 
   const setProviderVisible = (provider, visible) => {
@@ -190,7 +191,6 @@ export default function ConfigPage() {
     if (!file) return;
 
     const session = sessionRef.current;
-    setActiveArtworkProvider(provider);
     setArtworkState((current) => ({
       ...current,
       [provider]: { processing: true, error: '' },
@@ -208,6 +208,8 @@ export default function ConfigPage() {
           error: error instanceof Error ? error.message : '無法處理這張圖片。',
         },
       }));
+      setArtworkFocusRequest((current) =>
+        createArtworkErrorFocusRequest(current, provider));
     } finally {
       input.value = '';
       if (session === sessionRef.current) {

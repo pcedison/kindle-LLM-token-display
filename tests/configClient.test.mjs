@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import UPNG from 'upng-js';
 
 import {
   buildManagedUrls,
   calculateContainRect,
+  createArtworkErrorFocusRequest,
   formatRefreshOption,
   getArtworkControlNames,
   getArtworkErrorFocusProvider,
@@ -13,7 +15,13 @@ import {
 } from '../app/configClient.mjs';
 
 const FIVE_MIB = 5 * 1024 * 1024;
-const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo=';
+function makePngDataUrl(width = 104, height = 96) {
+  const rgba = new Uint8Array(width * height * 4).fill(255);
+  const encoded = UPNG.encode([rgba.buffer], width, height, 0);
+  return `data:image/png;base64,${Buffer.from(encoded).toString('base64')}`;
+}
+
+const PNG_DATA_URL = makePngDataUrl();
 
 function createArtworkAdapters({
   image = { width: 104, height: 96 },
@@ -160,6 +168,36 @@ test('does not focus a retained artwork error while the active provider is proce
   );
 });
 
+test('focus follows failure completion order for overlapping provider conversions', () => {
+  let request = null;
+  request = createArtworkErrorFocusRequest(request, 'openai');
+  assert.equal(
+    getArtworkErrorFocusProvider({
+      focusRequest: request,
+      artworkState: {
+        claude: { processing: true, error: '' },
+        openai: { processing: false, error: 'Codex failed first' },
+      },
+    }),
+    'openai',
+  );
+
+  request = createArtworkErrorFocusRequest(request, 'claude');
+  assert.equal(
+    getArtworkErrorFocusProvider({
+      focusRequest: request,
+      artworkState: {
+        claude: { processing: false, error: 'Claude failed second' },
+        openai: { processing: false, error: 'Codex failed first' },
+      },
+    }),
+    'claude',
+  );
+
+  request = createArtworkErrorFocusRequest(request, 'openai');
+  assert.deepEqual(request, { provider: 'openai', id: 3 });
+});
+
 test('builds provider-specific artwork upload and restore names', () => {
   assert.deepEqual(getArtworkControlNames('Claude'), {
     upload: 'Upload Claude artwork',
@@ -254,6 +292,9 @@ test('rejects empty and malformed PNG base64 exports', async () => {
     'data:image/png;base64,',
     'data:image/png;base64,not*base64',
     'data:image/png;base64,bm90LXBuZw==',
+    'data:image/png;base64,iVBORw0KGgo=',
+    makePngDataUrl(103, 96),
+    makePngDataUrl(104, 95),
   ]) {
     await assert.rejects(
       normalizeArtworkFile(

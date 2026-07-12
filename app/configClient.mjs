@@ -12,6 +12,51 @@ const ALLOWED_REFRESH_INTERVALS = new Set([
 ]);
 const PNG_DATA_URL_PREFIX = 'data:image/png;base64,';
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const ARTWORK_PROVIDERS = new Set(['claude', 'openai']);
+
+function readUint32(decoded, offset) {
+  return (
+    decoded.charCodeAt(offset) * 0x1000000
+    + decoded.charCodeAt(offset + 1) * 0x10000
+    + decoded.charCodeAt(offset + 2) * 0x100
+    + decoded.charCodeAt(offset + 3)
+  );
+}
+
+function hasCompleteNormalizedPng(decoded) {
+  if (decoded.length < 45) return false;
+  if (!PNG_SIGNATURE.every((byte, index) => decoded.charCodeAt(index) === byte)) {
+    return false;
+  }
+
+  let offset = PNG_SIGNATURE.length;
+  let sawHeader = false;
+  let sawImageData = false;
+
+  while (offset + 12 <= decoded.length) {
+    const length = readUint32(decoded, offset);
+    const type = decoded.slice(offset + 4, offset + 8);
+    const chunkEnd = offset + 12 + length;
+    if (chunkEnd > decoded.length) return false;
+
+    if (!sawHeader) {
+      if (type !== 'IHDR' || length !== 13) return false;
+      const width = readUint32(decoded, offset + 8);
+      const height = readUint32(decoded, offset + 12);
+      if (width !== ARTWORK_WIDTH || height !== ARTWORK_HEIGHT) return false;
+      sawHeader = true;
+    } else if (type === 'IDAT') {
+      if (length === 0) return false;
+      sawImageData = true;
+    } else if (type === 'IEND') {
+      return length === 0 && sawImageData && chunkEnd === decoded.length;
+    }
+
+    offset = chunkEnd;
+  }
+
+  return false;
+}
 
 function isValidPngDataUrl(dataUrl) {
   if (typeof dataUrl !== 'string' || !dataUrl.startsWith(PNG_DATA_URL_PREFIX)) {
@@ -29,7 +74,7 @@ function isValidPngDataUrl(dataUrl) {
 
   try {
     const decoded = globalThis.atob(payload);
-    return PNG_SIGNATURE.every((byte, index) => decoded.charCodeAt(index) === byte);
+    return hasCompleteNormalizedPng(decoded);
   } catch {
     return false;
   }
@@ -73,9 +118,17 @@ export function calculateContainRect(width, height) {
   };
 }
 
-export function getArtworkErrorFocusProvider({ artworkState, activeProvider }) {
-  const state = activeProvider ? artworkState[activeProvider] : null;
-  return state && !state.processing && state.error ? activeProvider : null;
+export function createArtworkErrorFocusRequest(current, provider) {
+  if (!ARTWORK_PROVIDERS.has(provider)) {
+    throw new TypeError('Invalid artwork provider.');
+  }
+  return { provider, id: (current?.id || 0) + 1 };
+}
+
+export function getArtworkErrorFocusProvider({ artworkState, focusRequest, activeProvider }) {
+  const provider = focusRequest?.provider || activeProvider;
+  const state = provider ? artworkState[provider] : null;
+  return state && !state.processing && state.error ? provider : null;
 }
 
 export function getArtworkControlNames(providerName) {
