@@ -102,6 +102,11 @@ test('tracked collector and Kindle shell entrypoints are executable', () => {
   for (const script of scripts) {
     assert.equal(trackedModes.get(script), '100755', script);
   }
+  assert.equal(
+    trackedModes.get('kindle-extension/local/fetch-remote-config.sh'),
+    '100755',
+    'remote config helper must be tracked and executable',
+  );
 });
 
 test('handoff uses the runtime environment variable names and precise privacy language', () => {
@@ -160,4 +165,26 @@ test('public docs explain 12-minute collection and mobile eventual consistency',
   assert.match(architecture, /720 seconds|12 minutes/i);
   assert.match(security, /version 2/i);
   assert.match(vercel, /provider OAuth[\s\S]{0,80}(?:local|official client)/i);
+});
+
+test('public docs explain authenticated remote settings and one-time Kindle migration', () => {
+  const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+  const vercel = readFileSync(new URL('../docs/VERCEL-SETUP.md', import.meta.url), 'utf8');
+  const architecture = readFileSync(new URL('../docs/ARCHITECTURE.md', import.meta.url), 'utf8');
+  const security = readFileSync(new URL('../docs/SECURITY.md', import.meta.url), 'utf8');
+  const publicText = `${readme}\n${vercel}\n${architecture}\n${security}`;
+
+  assert.match(vercel, /DASHBOARD_ADMIN_TOKEN/);
+  assert.match(security, /admin[\s\S]{0,120}view[\s\S]{0,120}ingest/i);
+  assert.match(publicText, /104\s*x\s*96/i);
+  assert.match(publicText, /PNG[\s\S]{0,80}JPEG[\s\S]{0,80}WebP/i);
+  assert.match(publicText, /10(?:-|\s*(?:to|through)\s*)50\s*seconds[\s\S]{0,100}high.power/i);
+  assert.match(publicText, /1(?:-|\s*(?:to|through)\s*)15\s*minutes/i);
+  assert.match(publicText, /one.time[\s\S]{0,100}USB[\s\S]{0,160}no USB/i);
+  assert.match(architecture, /device-config[\s\S]{0,160}refresh_interval_seconds/i);
+  assert.match(readme, /managed=true/);
+  assert.match(readme, /REMOTE_CONFIG_URL/);
+  assert.match(readme, /both[\s\S]{0,80}view token/i);
+  assert.match(security, /Kindle receives[\s\S]{0,160}device configuration/i);
+  assert.match(security, /Private Blob stores[\s\S]{0,160}managed display configuration/i);
 });

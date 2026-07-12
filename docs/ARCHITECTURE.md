@@ -9,6 +9,20 @@
 5. `/api/dashboard` reads the latest durable snapshot, applies optional manual fallback values, and renders a profile-sized PNG. It never contacts a provider.
 6. The Kindle wakes every 12 minutes, appends its battery value, downloads the PNG, displays it with `eips`, and returns to the configured wait mode.
 
+## Managed Settings Flow
+
+The authenticated root editor replaces one complete profile configuration in a
+private Blob. The document contains only provider visibility, two normalized
+artwork data URLs, the refresh interval, version, profile, and update time.
+`managed=true` makes `/api/dashboard` load that document; older query-driven
+URLs remain compatible and do not read it.
+
+The Kindle separately requests `/api/device-config?profile=<profile>` using the
+same optional view key as the PNG. Its cache-disabled text response contains
+only `version` and `refresh_interval_seconds`. The Kindle never sources this
+response as shell: it extracts one decimal value, checks the exact allowlist,
+and otherwise retains its last in-memory or local fallback interval.
+
 ## Availability and Consistency
 
 Vercel remains able to render the latest sanitized snapshot while every computer is asleep or off. The Windows and macOS processes are clients, not continuously running servers.
