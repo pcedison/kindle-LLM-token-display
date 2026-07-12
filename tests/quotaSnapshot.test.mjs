@@ -22,19 +22,70 @@ test('normalizes only approved Claude and Codex quota fields', () => {
   });
 
   assert.deepEqual(snapshot, {
-    version: 1,
+    version: 2,
     collectedAt: '2026-07-10T09:30:00.000Z',
     providers: {
       claude: {
         collectedAt: '2026-07-10T09:30:00.000Z',
-        windows: { fiveHour: { usedPercent: 17, resetsAt: 1783678020 } },
+        windows: { fiveHour: {
+          usedPercent: 17,
+          resetsAt: 1783678020,
+          collectedAt: '2026-07-10T09:30:00.000Z',
+        } },
       },
       codex: {
         collectedAt: '2026-07-10T09:30:00.000Z',
-        windows: { sevenDay: { usedPercent: 19, resetsAt: 1784250000 } },
+        windows: { sevenDay: {
+          usedPercent: 19,
+          resetsAt: 1784250000,
+          collectedAt: '2026-07-10T09:30:00.000Z',
+        } },
       },
     },
   });
+});
+
+test('upgrades v1 and merges each quota window by its own timestamp', () => {
+  const current = normalizeQuotaSnapshot({
+    version: 2,
+    collectedAt: '2026-07-12T08:10:00.000Z',
+    providers: {
+      claude: {
+        windows: {
+          fiveHour: {
+            usedPercent: 20,
+            resetsAt: 1783843200,
+            collectedAt: '2026-07-12T08:10:00.000Z',
+          },
+          sevenDay: {
+            usedPercent: 30,
+            resetsAt: 1784250000,
+            collectedAt: '2026-07-12T08:00:00.000Z',
+          },
+        },
+      },
+    },
+  });
+  const incoming = {
+    version: 1,
+    collectedAt: '2026-07-12T08:05:00.000Z',
+    providers: {
+      claude: {
+        windows: {
+          fiveHour: { usedPercent: 90, resetsAt: 1783843200 },
+          sevenDay: { usedPercent: 40, resetsAt: 1784250000 },
+        },
+      },
+    },
+  };
+
+  const merged = mergeQuotaSnapshots(current, incoming);
+
+  assert.equal(merged.version, 2);
+  assert.equal(merged.providers.claude.windows.fiveHour.usedPercent, 20);
+  assert.equal(merged.providers.claude.windows.fiveHour.collectedAt, '2026-07-12T08:10:00.000Z');
+  assert.equal(merged.providers.claude.windows.sevenDay.usedPercent, 40);
+  assert.equal(merged.providers.claude.windows.sevenDay.collectedAt, '2026-07-12T08:05:00.000Z');
 });
 
 test('rejects credential-like fields anywhere in an ingest snapshot', () => {
@@ -108,19 +159,31 @@ test('merges only incoming windows without erasing previous provider data', () =
   };
 
   assert.deepEqual(mergeQuotaSnapshots(current, incoming), {
-    version: 1,
+    version: 2,
     collectedAt: '2026-07-10T09:30:00.000Z',
     providers: {
       claude: {
         collectedAt: '2026-07-10T09:30:00.000Z',
         windows: {
-          fiveHour: { usedPercent: 17, resetsAt: 1783678020 },
-          sevenDay: { usedPercent: 21, resetsAt: 1784242800 },
+          fiveHour: {
+            usedPercent: 17,
+            resetsAt: 1783678020,
+            collectedAt: '2026-07-10T09:00:00.000Z',
+          },
+          sevenDay: {
+            usedPercent: 21,
+            resetsAt: 1784242800,
+            collectedAt: '2026-07-10T09:30:00.000Z',
+          },
         },
       },
       codex: {
         collectedAt: '2026-07-10T09:00:00.000Z',
-        windows: { sevenDay: { usedPercent: 19, resetsAt: 1784250000 } },
+        windows: { sevenDay: {
+          usedPercent: 19,
+          resetsAt: 1784250000,
+          collectedAt: '2026-07-10T09:00:00.000Z',
+        } },
       },
     },
   });
@@ -149,7 +212,7 @@ test('preserves provider freshness and does not refresh an absent provider durin
 
   assert.equal(merged.providers.codex.collectedAt, '2026-07-09T09:00:00.000Z');
   assert.equal(merged.providers.claude.collectedAt, '2026-07-10T09:29:00.000Z');
-  assert.equal(merged.collectedAt, '2026-07-10T09:30:00.000Z');
+  assert.equal(merged.collectedAt, '2026-07-10T09:29:00.000Z');
 });
 
 test('rejects an older provider update while accepting a newer sibling provider', () => {

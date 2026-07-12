@@ -27,6 +27,7 @@ function createDependencies(overrides = {}) {
     env: { DASHBOARD_INGEST_TOKEN: 'ingest-secret' },
     writeMergedQuotaSnapshot: async (snapshot) => snapshot,
     logger: { error() {} },
+    now: () => Date.parse('2026-07-10T09:30:00.000Z'),
     ...overrides,
   };
 }
@@ -159,11 +160,44 @@ test('writes a valid normalized snapshot and returns its collection timestamp on
   });
   assert.deepEqual(writes, [{
     ...validSnapshot,
+    version: 2,
     providers: {
       claude: {
         collectedAt: validSnapshot.collectedAt,
-        windows: validSnapshot.providers.claude.windows,
+        windows: {
+          fiveHour: {
+            ...validSnapshot.providers.claude.windows.fiveHour,
+            collectedAt: validSnapshot.collectedAt,
+          },
+        },
       },
     },
   }]);
+});
+
+test('rejects collection timestamps over ten minutes in the future', async () => {
+  const makeSnapshot = (collectedAt) => ({
+    version: 2,
+    collectedAt,
+    providers: {
+      claude: {
+        windows: {
+          fiveHour: { usedPercent: 17, resetsAt: 1783678020, collectedAt },
+        },
+      },
+    },
+  });
+  const now = () => Date.parse('2026-07-12T08:00:00.000Z');
+
+  const rejected = await handleUsageIngest(
+    makeRequest(JSON.stringify(makeSnapshot('2026-07-12T08:10:01.000Z'))),
+    createDependencies({ now }),
+  );
+  const accepted = await handleUsageIngest(
+    makeRequest(JSON.stringify(makeSnapshot('2026-07-12T08:10:00.000Z'))),
+    createDependencies({ now }),
+  );
+
+  assert.equal(rejected.status, 400);
+  assert.equal(accepted.status, 200);
 });

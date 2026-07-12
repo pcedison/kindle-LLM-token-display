@@ -61,10 +61,16 @@ test('reads and normalizes the private Blob snapshot through an injected Blob cl
 
   assert.deepEqual(snapshot, {
     ...existingSnapshot,
+    version: 2,
     providers: {
       codex: {
         collectedAt: existingSnapshot.collectedAt,
-        windows: existingSnapshot.providers.codex.windows,
+        windows: {
+          fiveHour: {
+            ...existingSnapshot.providers.codex.windows.fiveHour,
+            collectedAt: existingSnapshot.collectedAt,
+          },
+        },
       },
     },
   });

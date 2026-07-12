@@ -108,11 +108,26 @@ function manualWindow(provider, windowKey, env) {
   };
 }
 
-function isStaleSnapshot(snapshot, provider, windows, now) {
-  const collectedAt = new Date(provider?.collectedAt || snapshot?.collectedAt).getTime();
-  return Number.isFinite(collectedAt)
-    && now - collectedAt > 24 * 60 * 60 * 1000
-    && Object.values(windows).some((window) => window?.resetsAt * 1000 > now);
+function windowCollectedAt(snapshot, provider, window) {
+  return window?.collectedAt || provider?.collectedAt || snapshot?.collectedAt;
+}
+
+function staleWindowSyncLabel(window, collectedAt, now, timeZone) {
+  const collectedAtMs = new Date(collectedAt).getTime();
+  if (!isLiveWindow(window)
+    || !Number.isFinite(collectedAtMs)
+    || window.resetsAt * 1000 <= now
+    || now - collectedAtMs <= 30 * 60 * 1000) {
+    return undefined;
+  }
+
+  const syncTime = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(collectedAtMs));
+  return `SYNC ${syncTime}`;
 }
 
 function resolveOptions(options) {
@@ -135,9 +150,9 @@ export function getWindowDisplay(window, options = {}) {
   if (window.resetsAt * 1000 <= now) {
     return {
       label: WINDOW_CONFIG[windowKey].label,
-      remaining: '100%',
-      progress: 100,
-      reset: 'RESET COMPLETE',
+      remaining: '--%',
+      progress: 0,
+      reset: 'SYNC PENDING',
     };
   }
 
@@ -170,13 +185,23 @@ export function getProviderCards(options = {}) {
     const hasManualData = Object.keys(manualWindows).length > 0;
     const source = hasLiveData ? 'live' : hasManualData ? 'manual' : 'missing';
 
+    const staleLabels = Object.keys(WINDOW_CONFIG)
+      .map((windowKey) => staleWindowSyncLabel(
+        liveWindows[windowKey],
+        windowCollectedAt(snapshot, liveProvider, liveWindows[windowKey]),
+        currentTime,
+        timeZone,
+      ))
+      .filter(Boolean);
+
     return {
       queryKey: provider.queryKey,
       defaultVisible: provider.defaultVisible,
       displayName: provider.displayName,
       vendorLabel: provider.vendorLabel,
       source,
-      stale: hasLiveData && isStaleSnapshot(snapshot, liveProvider, liveWindows, currentTime),
+      stale: hasLiveData && staleLabels.length > 0,
+      syncLabel: staleLabels[0],
       windows: Object.fromEntries(Object.keys(WINDOW_CONFIG).map((windowKey) => [
         windowKey,
         hasLiveData

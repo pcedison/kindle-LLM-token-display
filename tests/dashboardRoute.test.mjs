@@ -191,7 +191,7 @@ test('view authorization runs before quota storage access', async () => {
   assert.equal(reads, 0);
 });
 
-test('live snapshot renders fractional quota and RESET COMPLETE without geometry intrusion', async () => {
+test('live snapshot renders fractional quota and post-reset sync pending without geometry intrusion', async () => {
   const expired = liveSnapshot();
   expired.providers.claude.windows.sevenDay = {
     usedPercent: 73,
@@ -210,7 +210,7 @@ test('live snapshot renders fractional quota and RESET COMPLETE without geometry
   assertPngMetadata(expiredPng, 758, 1024);
   const layout = getQuotaLayout({ width: 758, height: 1024, providerCount: 2 });
   assertBarProgress(expiredPng, layout.cards[0].quotaRows[0].bar, 82.5);
-  assertBarProgress(expiredPng, layout.cards[0].quotaRows[1].bar, 100);
+  assertBarProgress(expiredPng, layout.cards[0].quotaRows[1].bar, 0);
 
   const resetRow = layout.cards[0].quotaRows[1];
   assert.ok(expiredPng.countDifferences(futurePng, {
@@ -218,13 +218,13 @@ test('live snapshot renders fractional quota and RESET COMPLETE without geometry
     top: resetRow.reset.top - 2,
     right: layout.cards[0].content.left + layout.cards[0].content.width,
     bottom: resetRow.reset.bottom + 4,
-  }) > 20, 'RESET COMPLETE should produce distinct rendered reset-label pixels');
+  }) > 20, 'SYNC PENDING should produce distinct rendered reset-label pixels');
   assert.equal(expiredPng.countDark({
     left: layout.cards[0].content.left + resetRow.remaining.width,
     top: resetRow.remaining.top,
     right: resetRow.bar.left,
     bottom: resetRow.remaining.bottom,
-  }), 0, '100% should leave a clean gap before the bar');
+  }), 0, '--% should leave a clean gap before the bar');
 });
 
 test('missing snapshot renders visible placeholders with empty progress tracks', async () => {
