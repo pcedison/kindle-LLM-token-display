@@ -44,11 +44,13 @@ export async function readDashboardConfig(profile, {
   store = createDashboardConfigStore(),
   now,
 } = {}) {
-  const defaults = normalizeDashboardConfig({}, { profile, now });
   const stored = await store.read(profile);
   return stored === null
-    ? defaults
-    : normalizeDashboardConfig(stored, { profile, now });
+    ? normalizeDashboardConfig({}, { profile, now })
+    : normalizeDashboardConfig(stored, {
+      profile,
+      now: () => stored.updatedAt,
+    });
 }
 
 export async function writeDashboardConfig(profile, input, {

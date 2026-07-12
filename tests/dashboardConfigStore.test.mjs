@@ -8,16 +8,20 @@ import {
 } from '../app/api/config/dashboardConfigStore.mjs';
 
 const FIXED_NOW = '2026-07-12T10:00:00.000Z';
+const SAVED_UPDATED_AT = '2026-07-11T08:30:00.000Z';
 
 test('reads a profile from its private fixed-path Blob without using cache', async () => {
   const requests = [];
   const stored = {
+    version: 1,
+    profile: 'dp75sdi',
     refreshIntervalSeconds: 300,
     providers: {
       claude: { visible: false, imageDataUrl: null },
       openai: { visible: true, imageDataUrl: null },
       gemini: { visible: true },
     },
+    updatedAt: SAVED_UPDATED_AT,
   };
   const store = createDashboardConfigStore({
     token: 'test-blob-token',
@@ -34,8 +38,7 @@ test('reads a profile from its private fixed-path Blob without using cache', asy
     now: () => FIXED_NOW,
   });
 
-  assert.equal(config.refreshIntervalSeconds, 300);
-  assert.equal(config.providers.claude.visible, false);
+  assert.deepEqual(config, stored);
   assert.deepEqual(requests, [{
     pathname: 'dashboard-config/dp75sdi.json',
     options: {
@@ -44,6 +47,24 @@ test('reads a profile from its private fixed-path Blob without using cache', asy
       useCache: false,
     },
   }]);
+});
+
+test('rejects an invalid persisted updatedAt instead of replacing it with read time', async () => {
+  const store = createDashboardConfigStore({
+    token: 'test-blob-token',
+    blob: {
+      async get() {
+        return {
+          stream: new Response(JSON.stringify({ updatedAt: 'not-a-timestamp' })).body,
+        };
+      },
+    },
+  });
+
+  await assert.rejects(
+    readDashboardConfig('dp75sdi', { store, now: () => FIXED_NOW }),
+    /Invalid time value/,
+  );
 });
 
 test('returns normalized profile defaults when the Blob is missing', async () => {
@@ -82,6 +103,7 @@ test('normalizes and deterministically overwrites the complete private JSON docu
   });
 
   const saved = await writeDashboardConfig('dp75sdi', {
+    updatedAt: SAVED_UPDATED_AT,
     refreshIntervalSeconds: 60,
     providers: {
       claude: { visible: false },
@@ -94,6 +116,7 @@ test('normalizes and deterministically overwrites the complete private JSON docu
   });
 
   assert.deepEqual(JSON.parse(writes[0].body), saved);
+  assert.equal(saved.updatedAt, FIXED_NOW);
   assert.equal('ignored' in saved, false);
   assert.deepEqual(writes, [{
     pathname: 'dashboard-config/dp75sdi.json',
