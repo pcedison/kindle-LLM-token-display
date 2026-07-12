@@ -53,13 +53,32 @@ if (Test-Path -LiteralPath $ManifestPath -PathType Leaf) {
             $taskPresent = ($LASTEXITCODE -eq 0)
             if ($taskPresent) {
                 [xml]$taskXml = $taskXmlText
-                $taskLoginTrigger = ($null -ne $taskXml.Task.Triggers.LogonTrigger)
-                $taskTwelveMinuteCadence = @($taskXml.Task.Triggers.TimeTrigger).Where({
-                    $_.Repetition.Interval -eq 'PT12M'
-                }).Count -gt 0
-                $taskStartWhenAvailable = ([string]$taskXml.Task.Settings.StartWhenAvailable -eq 'true')
-                $taskWakeDisabled = ([string]$taskXml.Task.Settings.WakeToRun -ne 'true')
-                $taskOverlapDisabled = ([string]$taskXml.Task.Settings.MultipleInstancesPolicy -eq 'IgnoreNew')
+                foreach ($triggerNode in @($taskXml.Task.Triggers.ChildNodes)) {
+                    if ($triggerNode.LocalName -eq 'LogonTrigger') { $taskLoginTrigger = $true }
+                    if ($triggerNode.LocalName -eq 'TimeTrigger') {
+                        foreach ($triggerChild in @($triggerNode.ChildNodes)) {
+                            if ($triggerChild.LocalName -eq 'Repetition') {
+                                foreach ($repetitionChild in @($triggerChild.ChildNodes)) {
+                                    if ($repetitionChild.LocalName -eq 'Interval' -and $repetitionChild.InnerText -eq 'PT12M') {
+                                        $taskTwelveMinuteCadence = $true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                $taskWakeDisabled = $true
+                foreach ($settingsNode in @($taskXml.Task.Settings.ChildNodes)) {
+                    if ($settingsNode.LocalName -eq 'StartWhenAvailable' -and $settingsNode.InnerText -eq 'true') {
+                        $taskStartWhenAvailable = $true
+                    }
+                    if ($settingsNode.LocalName -eq 'WakeToRun' -and $settingsNode.InnerText -eq 'true') {
+                        $taskWakeDisabled = $false
+                    }
+                    if ($settingsNode.LocalName -eq 'MultipleInstancesPolicy' -and $settingsNode.InnerText -eq 'IgnoreNew') {
+                        $taskOverlapDisabled = $true
+                    }
+                }
             }
         }
     }

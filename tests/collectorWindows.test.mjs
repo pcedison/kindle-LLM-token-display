@@ -157,6 +157,32 @@ test('diagnostics expose booleans or versions without sensitive content', () => 
   assert.doesNotMatch(diagnose, /Get-Content\s+.*config\.json/i);
 });
 
+test('diagnostics treats an omitted WakeToRun element as disabled', () => {
+  const diagnosePath = psQuote(fileURLToPath(files.diagnose));
+  const result = runPowerShellHarness((root) => `
+$ErrorActionPreference = 'Stop'
+$env:LOCALAPPDATA = ${psQuote(join(root, 'local'))}
+$env:USERPROFILE = ${psQuote(join(root, 'profile'))}
+$installRoot = Join-Path $env:LOCALAPPDATA 'KindleLLMDashboard'
+$manifestPath = Join-Path $installRoot 'install-manifest.json'
+New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+[IO.File]::WriteAllText($manifestPath, ([ordered]@{
+    schemaVersion = 2
+    owner = 'kindle-llm-dash/windows-collector'
+    taskName = 'Kindle LLM Quota Uploader-0123456789abcdef0123456789abcdef'
+} | ConvertTo-Json))
+$global:taskXml = '<?xml version="1.0"?><Task><Triggers><LogonTrigger/><TimeTrigger><Repetition><Interval>PT12M</Interval></Repetition></TimeTrigger></Triggers><Settings><StartWhenAvailable>true</StartWhenAvailable><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy></Settings></Task>'
+function global:schtasks.exe { $global:LASTEXITCODE = 0; $global:taskXml }
+
+& ${diagnosePath}
+`);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.observation?.taskPresent, true);
+  assert.equal(result.observation?.taskWakeDisabled, true);
+  assert.equal(result.observation?.taskOverlapDisabled, true);
+});
+
 test('uninstaller removes only owned resources and preserves user changes', () => {
   const uninstall = source('uninstall');
   assert.match(uninstall, /Kindle LLM Quota Uploader/);
@@ -364,6 +390,9 @@ Write-FixtureJson -Path $settingsPath -Value $currentSettings
 Write-FixtureJson -Path $manifestPath -Value $manifest
 New-Item -ItemType Directory -Force -Path $collectorRoot | Out-Null
 [IO.File]::WriteAllText((Join-Path $collectorRoot 'old-install.txt'), 'owned')
+$oldStateRoot = Join-Path $installRoot 'state'
+New-Item -ItemType Directory -Force -Path $oldStateRoot | Out-Null
+[IO.File]::WriteAllText((Join-Path $oldStateRoot 'claude.json'), '{"collectedAt":"2026-07-12T08:00:00.000Z","windows":{}}')
 
 $xmlCommand = [Security.SecurityElement]::Escape($nodePath)
 $xmlArguments = [Security.SecurityElement]::Escape($taskArguments)
@@ -383,6 +412,7 @@ function global:Read-Host {
 & ${installPath} -IngestUrl 'https://example.test/api/usage' | Out-Null
 $reinstalledManifest = [IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
 $retainedBackupPath = [string]$reinstalledManifest.backupPath
+$statePreservedAfterReinstall = Test-Path -LiteralPath (Join-Path (Join-Path $installRoot 'state') 'claude.json') -PathType Leaf
 $settingsAfterInstall = [IO.File]::ReadAllText($settingsPath) | ConvertFrom-Json
 $settingsAfterInstall.theme = 'light'
 $settingsAfterInstall | Add-Member -NotePropertyName fontScale -NotePropertyValue 1.25
@@ -392,6 +422,7 @@ $restoredSettings = [IO.File]::ReadAllText($settingsPath) | ConvertFrom-Json
 
 [pscustomobject]@{
     retainedOriginalBackup = [StringComparer]::OrdinalIgnoreCase.Equals($retainedBackupPath, $backupPath)
+    statePreservedAfterReinstall = $statePreservedAfterReinstall
     backupStillExists = Test-Path -LiteralPath $backupPath -PathType Leaf
     restoredTheme = [string]$restoredSettings.theme
     restoredTelemetry = [bool]$restoredSettings.telemetry
@@ -405,6 +436,7 @@ $restoredSettings = [IO.File]::ReadAllText($settingsPath) | ConvertFrom-Json
   assert.equal(result.status, 0, result.stderr || result.stdout);
   assert.ok(result.observation, result.stdout);
   assert.equal(result.observation.retainedOriginalBackup, true);
+  assert.equal(result.observation.statePreservedAfterReinstall, true);
   assert.equal(result.observation.backupStillExists, true);
   assert.equal(result.observation.restoredTheme, 'light');
   assert.equal(result.observation.restoredTelemetry, false);

@@ -344,6 +344,9 @@ try {
     $plainToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
     if ([string]::IsNullOrWhiteSpace($plainToken)) { throw 'Dashboard ingest token is required' }
 
+    if ($taskExistedBefore) {
+        & schtasks.exe /End /TN $TaskName 2>$null | Out-Null
+    }
     if (Test-Path -LiteralPath $InstallRoot) {
         $installBackup = "$InstallRoot.rollback.$([Guid]::NewGuid().ToString('N'))"
         Move-Item -LiteralPath $InstallRoot -Destination $installBackup
@@ -370,6 +373,17 @@ try {
         if (-not (Test-Path -LiteralPath $runtimeSource -PathType Leaf)) { throw 'Collector runtime is incomplete' }
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $runtimeDestination) | Out-Null
         Copy-Item -LiteralPath $runtimeSource -Destination $runtimeDestination -Force
+    }
+    if ($installBackup) {
+        $previousStateRoot = Join-Path $installBackup 'state'
+        $newStateRoot = Join-Path $InstallRoot 'state'
+        foreach ($stateName in @('claude.json', 'last-upload.json', 'upload-backoff.json')) {
+            $stateSource = Join-Path $previousStateRoot $stateName
+            if (Test-Path -LiteralPath $stateSource -PathType Leaf) {
+                New-Item -ItemType Directory -Force -Path $newStateRoot | Out-Null
+                Copy-Item -LiteralPath $stateSource -Destination (Join-Path $newStateRoot $stateName) -Force
+            }
+        }
     }
     $projectRoot = Split-Path -Parent $PSScriptRoot
     $contractSource = Join-Path $projectRoot 'app\api\dashboard\quotaSnapshot.mjs'
