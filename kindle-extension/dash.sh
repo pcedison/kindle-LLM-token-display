@@ -121,6 +121,7 @@ stop_kindle_ui_once() {
 
 show_dashboard_png() {
   mode=${1:-partial}
+  hide_kindle_chrome
 
   if [ "$mode" = full ]; then
     echo "Full screen refresh"

@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 
-hide_kindle_chrome() {
+hide_kindle_pillow() {
   if [ "${HIDE_KINDLE_CHROME:-true}" != true ]; then
     echo "Kindle system chrome left enabled."
     return 0
@@ -8,6 +8,15 @@ hide_kindle_chrome() {
 
   echo "Hiding Kindle system chrome."
   lipc-set-prop com.lab126.pillow disableEnablePillow disable >/dev/null 2>&1 || true
+}
+
+hide_kindle_chrome() {
+  if [ "${HIDE_KINDLE_CHROME:-true}" != true ]; then
+    echo "Kindle system chrome left enabled."
+    return 0
+  fi
+
+  hide_kindle_pillow
 
   if [ "${FREEZE_KINDLE_WINDOW_MANAGER:-true}" = true ]; then
     if killall -STOP awesome >/dev/null 2>&1; then

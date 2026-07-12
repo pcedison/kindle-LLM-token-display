@@ -389,6 +389,39 @@ test('hides and restores Kindle system chrome with reversible commands', () => {
   }
 });
 
+test('pillow-only hide never pauses the Kindle window manager', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-pillow-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const capture = join(directory, 'commands.log');
+
+  writeFileSync(
+    join(directory, 'lipc-set-prop'),
+    '#!/usr/bin/env sh\nprintf \'lipc %s\\n\' "$*" >> "$CAPTURE"\n',
+  );
+  writeFileSync(
+    join(directory, 'killall'),
+    '#!/usr/bin/env sh\nprintf \'killall %s\\n\' "$*" >> "$CAPTURE"\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `chmod +x "$PWD/${fixture}/lipc-set-prop" "$PWD/${fixture}/killall"; PATH="$PWD/${fixture}:$PATH" CAPTURE="$PWD/${fixture}/commands.log" HIDE_KINDLE_CHROME=true FREEZE_KINDLE_WINDOW_MANAGER=true sh -c '. ./kindle-extension/local/chrome-control.sh; hide_kindle_pillow'`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(readFileSync(capture, 'utf8').trim().split('\n'), [
+      'lipc com.lab126.pillow disableEnablePillow disable',
+    ]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('dashboard lifecycle always restores Kindle system chrome', () => {
   const env = readFileSync(join(process.cwd(), 'kindle-extension', 'local', 'env.sh'), 'utf8');
   const dash = readFileSync(join(process.cwd(), 'kindle-extension', 'dash.sh'), 'utf8');
@@ -410,6 +443,25 @@ test('dashboard lifecycle always restores Kindle system chrome', () => {
   assert.doesNotMatch(start, /nohup \.\/dash\.sh/);
   assert.match(stop, /logs\/dash\.pid/);
   assert.match(stop, /signal_owned_process/);
+});
+
+test('re-hides full chrome for daemon draws and only Pillow for one-shot draws', () => {
+  const dash = readFileSync(join(process.cwd(), 'kindle-extension', 'dash.sh'), 'utf8');
+  const displayOnce = readFileSync(
+    join(process.cwd(), 'kindle-extension', 'local', 'display-once.sh'),
+    'utf8',
+  );
+  const showStart = dash.indexOf('show_dashboard_png()');
+  const showEnd = dash.indexOf('\nrefresh_dashboard()', showStart);
+  const showBody = dash.slice(showStart, showEnd);
+
+  assert.ok(showStart >= 0 && showEnd > showStart);
+  assert.ok(showBody.indexOf('hide_kindle_chrome') >= 0);
+  assert.ok(showBody.indexOf('hide_kindle_chrome') < showBody.indexOf('/usr/sbin/eips'));
+  assert.match(displayOnce, /local\/chrome-control\.sh/);
+  assert.ok(displayOnce.indexOf('hide_kindle_pillow') >= 0);
+  assert.ok(displayOnce.indexOf('hide_kindle_pillow') < displayOnce.indexOf('/usr/sbin/eips'));
+  assert.doesNotMatch(displayOnce, /\bhide_kindle_chrome\b/);
 });
 
 test('signals only a PID owned by the absolute dashboard command', () => {
