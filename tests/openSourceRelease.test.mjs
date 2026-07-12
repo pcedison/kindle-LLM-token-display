@@ -30,7 +30,13 @@ test('ships an MIT license and public documentation set', () => {
   const license = read('LICENSE');
   assert.match(license, /MIT License/);
   assert.match(license, /Copyright \(c\) 2026 pcedison/);
-  for (const file of ['docs/SECURITY.md', 'docs/ARCHITECTURE.md', 'docs/WINDOWS-COLLECTOR.md', 'docs/VERCEL-SETUP.md']) {
+  for (const file of [
+    'docs/SECURITY.md',
+    'docs/ARCHITECTURE.md',
+    'docs/WINDOWS-COLLECTOR.md',
+    'docs/MACOS-COLLECTOR.md',
+    'docs/VERCEL-SETUP.md',
+  ]) {
     assert.ok(existsSync(new URL(`../${file}`, import.meta.url)), `${file} must exist`);
   }
 });
