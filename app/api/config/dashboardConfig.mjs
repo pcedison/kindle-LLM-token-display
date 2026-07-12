@@ -1,3 +1,5 @@
+import UPNG from 'upng-js';
+
 const CONFIG_VERSION = 1;
 const DEFAULT_REFRESH_INTERVAL_SECONDS = 720;
 const MAX_PNG_BYTES = 100 * 1024;
@@ -40,17 +42,106 @@ function normalizeArtworkProvider(providers, providerKey) {
   };
 }
 
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function decodeStrictBase64(encoded) {
+  if (!encoded) throw new TypeError('Invalid PNG base64 data');
+
+  const paddingLength = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
+  const unpadded = encoded.slice(0, encoded.length - paddingLength);
+  const remainder = unpadded.length % 4;
+  const hasValidPadding = paddingLength === 0
+    ? remainder !== 1
+    : (paddingLength === 1 && remainder === 3)
+      || (paddingLength === 2 && remainder === 2);
+
+  if (!/^[A-Za-z0-9+/]+$/.test(unpadded) || !hasValidPadding) {
+    throw new TypeError('Invalid PNG base64 padding');
+  }
+
+  const decodedLength = Math.floor(unpadded.length * 3 / 4);
+  if (decodedLength > MAX_PNG_BYTES) {
+    throw new TypeError('PNG encoded length exceeds the 100 KiB decoded limit');
+  }
+
+  const bytes = Buffer.from(unpadded, 'base64');
+  if (bytes.toString('base64').replace(/=+$/, '') !== unpadded) {
+    throw new TypeError('Invalid PNG base64 data');
+  }
+  return bytes;
+}
+
+function validatePngChunks(bytes) {
+  let offset = PNG_SIGNATURE.length;
+  let chunkIndex = 0;
+  let hasImageData = false;
+  let hasImageEnd = false;
+
+  while (offset < bytes.length) {
+    if (bytes.length - offset < 12) throw new TypeError('Invalid truncated PNG');
+
+    const dataLength = bytes.readUInt32BE(offset);
+    const chunkEnd = offset + dataLength + 12;
+    if (chunkEnd > bytes.length) throw new TypeError('Invalid truncated PNG');
+
+    const type = bytes.toString('ascii', offset + 4, offset + 8);
+    const expectedCrc = bytes.readUInt32BE(offset + dataLength + 8);
+    const actualCrc = crc32(bytes.subarray(offset + 4, offset + dataLength + 8));
+    if (expectedCrc !== actualCrc) throw new TypeError('Invalid corrupt PNG chunk');
+
+    if (chunkIndex === 0 && (type !== 'IHDR' || dataLength !== 13)) {
+      throw new TypeError('Invalid PNG IHDR');
+    }
+    if (type === 'IDAT') hasImageData = true;
+    if (type === 'IEND') {
+      if (dataLength !== 0 || chunkEnd !== bytes.length) {
+        throw new TypeError('Invalid PNG IEND');
+      }
+      hasImageEnd = true;
+    }
+
+    offset = chunkEnd;
+    chunkIndex += 1;
+  }
+
+  if (!hasImageData || !hasImageEnd) throw new TypeError('Invalid incomplete PNG');
+}
+
+function validateOpaquePixels(bytes) {
+  try {
+    const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const decoded = UPNG.decode(arrayBuffer);
+    const frames = UPNG.toRGBA8(decoded);
+    if (frames.length !== 1) throw new TypeError('Animated PNG is not normalized artwork');
+
+    const rgba = new Uint8Array(frames[0]);
+    if (rgba.length !== NORMALIZED_PNG_WIDTH * NORMALIZED_PNG_HEIGHT * 4) {
+      throw new TypeError('Invalid PNG pixel data');
+    }
+    for (let index = 3; index < rgba.length; index += 4) {
+      if (rgba[index] !== 255) throw new TypeError('PNG must be fully opaque');
+    }
+  } catch {
+    throw new TypeError('Invalid PNG image data; artwork must be fully opaque');
+  }
+}
+
 export function validateNormalizedPngDataUrl(value) {
   if (typeof value !== 'string' || !value.startsWith(PNG_DATA_URL_PREFIX)) {
     throw new TypeError('Invalid PNG data URL');
   }
 
   const encoded = value.slice(PNG_DATA_URL_PREFIX.length);
-  if (!encoded || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 === 1) {
-    throw new TypeError('Invalid PNG base64 data');
-  }
-
-  const bytes = Buffer.from(encoded, 'base64');
+  const bytes = decodeStrictBase64(encoded);
   if (bytes.length > MAX_PNG_BYTES) {
     throw new TypeError('PNG exceeds the 100 KiB decoded limit');
   }
@@ -66,6 +157,8 @@ export function validateNormalizedPngDataUrl(value) {
   ) {
     throw new TypeError('PNG dimensions must be exactly 104 x 96');
   }
+  validatePngChunks(bytes);
+  validateOpaquePixels(bytes);
 
   return `${PNG_DATA_URL_PREFIX}${bytes.toString('base64')}`;
 }
@@ -87,7 +180,7 @@ export function normalizeDashboardConfig(input = {}, options = {}) {
     throw new TypeError('Invalid refresh interval');
   }
 
-  const providers = input.providers ?? {};
+  const providers = input.providers === undefined ? {} : input.providers;
   if (!isObject(providers)) {
     throw new TypeError('Invalid providers');
   }

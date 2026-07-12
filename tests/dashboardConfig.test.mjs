@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import UPNG from 'upng-js';
 
 import {
   ALLOWED_REFRESH_INTERVALS,
@@ -13,16 +14,66 @@ const EXPECTED_INTERVALS = Object.freeze([
   360, 420, 480, 540, 600, 660, 720, 780, 840, 900,
 ]);
 const FIXED_NOW = '2026-07-12T12:00:00.000Z';
-const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+const MAX_PNG_BYTES = 100 * 1024;
 
-function pngBytes({ width = 104, height = 96, size = 33 } = {}) {
-  const bytes = Buffer.alloc(size);
-  PNG_SIGNATURE.copy(bytes);
-  bytes.writeUInt32BE(13, 8);
-  bytes.write('IHDR', 12, 'ascii');
-  bytes.writeUInt32BE(width, 16);
-  bytes.writeUInt32BE(height, 20);
-  return bytes;
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function padPng(bytes, targetSize) {
+  const dataLength = targetSize - bytes.length - 12;
+  assert.ok(dataLength >= 0, 'target PNG size must fit an ancillary chunk');
+
+  const chunk = Buffer.alloc(dataLength + 12);
+  chunk.writeUInt32BE(dataLength, 0);
+  chunk.write('tEXt', 4, 'ascii');
+  chunk.writeUInt32BE(crc32(chunk.subarray(4, 8 + dataLength)), 8 + dataLength);
+  return Buffer.concat([bytes.subarray(0, -12), chunk, bytes.subarray(-12)]);
+}
+
+function pngBytes({ width = 104, height = 96, alpha = 255, size } = {}) {
+  const rgba = new Uint8Array(width * height * 4);
+  for (let index = 0; index < rgba.length; index += 4) {
+    rgba[index] = 24;
+    rgba[index + 1] = 96;
+    rgba[index + 2] = 160;
+    rgba[index + 3] = alpha;
+  }
+
+  const bytes = Buffer.from(UPNG.encode([rgba.buffer], width, height, 0));
+  return size === undefined ? bytes : padPng(bytes, size);
+}
+
+function findChunk(bytes, expectedType) {
+  let offset = 8;
+  while (offset + 12 <= bytes.length) {
+    const length = bytes.readUInt32BE(offset);
+    const type = bytes.toString('ascii', offset + 4, offset + 8);
+    if (type === expectedType) return { offset, length, dataOffset: offset + 8 };
+    offset += length + 12;
+  }
+  throw new Error(`Missing ${expectedType} chunk`);
+}
+
+function truncatedPng(bytes) {
+  const { dataOffset, length } = findChunk(bytes, 'IDAT');
+  return bytes.subarray(0, dataOffset + Math.max(1, Math.floor(length / 2)));
+}
+
+function corruptPng(bytes) {
+  const corrupted = Buffer.from(bytes);
+  const { dataOffset, length } = findChunk(corrupted, 'IDAT');
+  for (let index = 0; index < Math.min(length, 8); index += 1) {
+    corrupted[dataOffset + index] ^= 0xff;
+  }
+  return corrupted;
 }
 
 function pngDataUrl(options) {
@@ -93,6 +144,10 @@ test('accepts only supported profiles and boolean provider visibility', () => {
     () => normalizeDashboardConfig({ providers: [] }, { profile: 'dp75sdi' }),
     /providers/i,
   );
+  assert.throws(
+    () => normalizeDashboardConfig({ providers: null }, { profile: 'dp75sdi' }),
+    /providers/i,
+  );
 });
 
 test('defaults missing providers while preserving independent null images', () => {
@@ -118,7 +173,7 @@ test('rejects refresh values outside the exact integer allowlist', () => {
 });
 
 test('validates and canonicalizes exact 104 by 96 PNG data URLs', () => {
-  const bytes = pngBytes({ size: 34 });
+  const bytes = pngBytes({ size: 1_000 });
   const unpadded = bytes.toString('base64').replace(/=+$/, '');
   const canonical = `data:image/png;base64,${bytes.toString('base64')}`;
 
@@ -154,13 +209,60 @@ test('rejects non-PNG data URLs, malformed PNG headers, and wrong IHDR dimension
   }
 });
 
+test('decodes a complete PNG and rejects truncated, corrupt, or transparent artwork', () => {
+  const opaque = pngBytes();
+  assert.equal(validateNormalizedPngDataUrl(pngDataUrl()), pngDataUrl());
+
+  for (const bytes of [
+    truncatedPng(opaque),
+    corruptPng(opaque),
+    pngBytes({ alpha: 0 }),
+  ]) {
+    assert.throws(
+      () => validateNormalizedPngDataUrl(`data:image/png;base64,${bytes.toString('base64')}`),
+      /PNG/i,
+    );
+  }
+});
+
+test('accepts canonical padded and unpadded base64 but rejects malformed padding', () => {
+  const paddedBytes = pngBytes({ size: 1_000 });
+  const padded = paddedBytes.toString('base64');
+  const unpadded = padded.replace(/=+$/, '');
+  assert.match(padded, /==$/);
+  assert.equal(validateNormalizedPngDataUrl(`data:image/png;base64,${padded}`), `data:image/png;base64,${padded}`);
+  assert.equal(validateNormalizedPngDataUrl(`data:image/png;base64,${unpadded}`), `data:image/png;base64,${padded}`);
+
+  const noPadding = pngBytes({ size: 999 }).toString('base64');
+  assert.doesNotMatch(noPadding, /=/);
+  for (const malformed of [
+    padded.slice(0, -1),
+    `${noPadding}==`,
+    `${unpadded}===`,
+    `${unpadded.slice(0, 8)}=${unpadded.slice(8)}`,
+  ]) {
+    assert.throws(
+      () => validateNormalizedPngDataUrl(`data:image/png;base64,${malformed}`),
+      /base64/i,
+    );
+  }
+});
+
+test('bounds encoded payload length before decoding', () => {
+  const oversized = Buffer.alloc(MAX_PNG_BYTES + 1).toString('base64');
+  assert.throws(
+    () => validateNormalizedPngDataUrl(`data:image/png;base64,${oversized}`),
+    /encoded length.*100 KiB/i,
+  );
+});
+
 test('accepts exactly 100 KiB decoded and rejects one byte more', () => {
   assert.equal(
-    validateNormalizedPngDataUrl(pngDataUrl({ size: 100 * 1024 })),
-    pngDataUrl({ size: 100 * 1024 }),
+    validateNormalizedPngDataUrl(pngDataUrl({ size: MAX_PNG_BYTES })),
+    pngDataUrl({ size: MAX_PNG_BYTES }),
   );
   assert.throws(
-    () => validateNormalizedPngDataUrl(pngDataUrl({ size: (100 * 1024) + 1 })),
+    () => validateNormalizedPngDataUrl(pngDataUrl({ size: MAX_PNG_BYTES + 1 })),
     /100 KiB/i,
   );
 });
