@@ -36,6 +36,11 @@ $configPresent = Test-Path -LiteralPath (Join-Path $InstallRoot 'config.json')
 $claudeSpoolPresent = Test-Path -LiteralPath (Join-Path $StateRoot 'claude.json')
 $lastUploadPresent = Test-Path -LiteralPath (Join-Path $StateRoot 'last-upload.json')
 $taskPresent = $false
+$taskLoginTrigger = $false
+$taskTwelveMinuteCadence = $false
+$taskStartWhenAvailable = $false
+$taskWakeDisabled = $false
+$taskOverlapDisabled = $false
 if (Test-Path -LiteralPath $ManifestPath -PathType Leaf) {
     try {
         $manifest = [IO.File]::ReadAllText($ManifestPath) | ConvertFrom-Json
@@ -44,8 +49,18 @@ if (Test-Path -LiteralPath $ManifestPath -PathType Leaf) {
             $manifest.owner -ceq $ManifestOwner -and
             $manifest.taskName -is [string] -and
             $manifest.taskName -cmatch $taskNamePattern) {
-            & schtasks.exe /Query /TN ([string]$manifest.taskName) *> $null
+            $taskXmlText = (& schtasks.exe /Query /TN ([string]$manifest.taskName) /XML 2>$null | Out-String)
             $taskPresent = ($LASTEXITCODE -eq 0)
+            if ($taskPresent) {
+                [xml]$taskXml = $taskXmlText
+                $taskLoginTrigger = ($null -ne $taskXml.Task.Triggers.LogonTrigger)
+                $taskTwelveMinuteCadence = @($taskXml.Task.Triggers.TimeTrigger).Where({
+                    $_.Repetition.Interval -eq 'PT12M'
+                }).Count -gt 0
+                $taskStartWhenAvailable = ([string]$taskXml.Task.Settings.StartWhenAvailable -eq 'true')
+                $taskWakeDisabled = ([string]$taskXml.Task.Settings.WakeToRun -ne 'true')
+                $taskOverlapDisabled = ([string]$taskXml.Task.Settings.MultipleInstancesPolicy -eq 'IgnoreNew')
+            }
         }
     }
     catch {}
@@ -60,5 +75,10 @@ if (Test-Path -LiteralPath $ManifestPath -PathType Leaf) {
     configPresent = $configPresent
     claudeSpoolPresent = $claudeSpoolPresent
     taskPresent = $taskPresent
+    taskLoginTrigger = $taskLoginTrigger
+    taskTwelveMinuteCadence = $taskTwelveMinuteCadence
+    taskStartWhenAvailable = $taskStartWhenAvailable
+    taskWakeDisabled = $taskWakeDisabled
+    taskOverlapDisabled = $taskOverlapDisabled
     lastUploadPresent = $lastUploadPresent
 } | ConvertTo-Json -Compress

@@ -57,7 +57,7 @@ test('all Windows scripts parse with Windows PowerShell', () => {
   }
 });
 
-test('installer uses a protected per-user config and token-free five-minute task', () => {
+test('installer uses a protected per-user config and token-free event-driven task', () => {
   const install = source('install');
   assert.match(install, /LOCALAPPDATA/);
   assert.match(install, /KindleLLMDashboard/);
@@ -65,7 +65,11 @@ test('installer uses a protected per-user config and token-free five-minute task
   assert.match(install, /icacls\.exe/i);
   assert.match(install, /LASTEXITCODE/);
   assert.match(install, /Kindle LLM Quota Uploader/);
-  assert.match(install, /PT5M/i);
+  assert.match(install, /PT12M/i);
+  assert.match(install, /Triggers\.Create\(9\)/i);
+  assert.match(install, /StartWhenAvailable\s*=\s*\$true/i);
+  assert.match(install, /WakeToRun\s*=\s*\$false/i);
+  assert.match(install, /MultipleInstances\s*=\s*2/i);
   assert.match(install, /NewTask\(0\)/i);
   assert.match(install, /schtasks\.exe\s+\/Create[^\r\n]+\/XML\s+\$taskXmlPath/i);
   assert.doesNotMatch(install, /schtasks\.exe\s+\/Create[^\r\n]+\/TR/i);
@@ -77,6 +81,9 @@ test('installer uses a protected per-user config and token-free five-minute task
   assert.match(install, /Move-Item\s+-LiteralPath\s+\$installBackup\s+-Destination\s+\$InstallRoot/i);
   assert.match(install, /quotaSnapshot\.mjs/);
   assert.match(install, /Copy-Item\s+-LiteralPath\s+\$contractSource\s+-Destination\s+\$contractDestination/i);
+  for (const runtime of ['collectorLock.mjs', 'collectorSecret.mjs', 'runCollector.mjs', 'triggerUpload.mjs']) {
+    assert.match(install, new RegExp(runtime.replace('.', '\\.')));
+  }
 });
 
 test('installer backs up structured Claude settings and refuses foreign status lines', () => {
@@ -105,7 +112,7 @@ test('successful reinstall preserves the original Claude settings backup', () =>
   assert.match(install, /\$backupCreatedThisRun/i);
 });
 
-test('installer uses a manifest-owned GUID task and never forces an in-place update', () => {
+test('installer updates only a twice-validated manifest-owned GUID task', () => {
   const install = source('install');
   assert.match(install, /schemaVersion\s*=\s*\$ManifestSchemaVersion/i);
   assert.match(install, /owner\s*=\s*\$ManifestOwner/i);
@@ -118,12 +125,15 @@ test('installer uses a manifest-owned GUID task and never forces an in-place upd
   assert.match(install, /Assert-TaskActionMatchesManifest/i);
   assert.match(install, /Refusing to replace a foreign scheduled task/i);
 
-  const ownershipAt = install.indexOf('Assert-TaskActionMatchesManifest');
+  const ownershipAt = install.indexOf('Assert-TaskActionMatchesManifest -TaskAction $existingTaskAction');
   const promptAt = install.indexOf("Read-Host 'Dashboard ingest token'");
+  const recheckAt = install.indexOf('Assert-TaskActionMatchesManifest -TaskAction $currentTaskAction');
   const forcedCreateAt = install.search(/schtasks\.exe\s+\/Create[^\r\n]+\/F/i);
   assert.ok(ownershipAt >= 0 && ownershipAt < promptAt, 'task ownership must be checked before requesting the token');
-  assert.equal(forcedCreateAt, -1, 'installer must never force-update a task');
-  assert.match(install, /if\s*\(-not\s+\$taskExistedBefore\)[\s\S]*?schtasks\.exe\s+\/Create/i);
+  assert.ok(recheckAt > promptAt && recheckAt < forcedCreateAt, 'task ownership must be rechecked immediately before an update');
+  assert.match(install, /if\s*\(\$taskExistedBefore\)[\s\S]*?schtasks\.exe\s+\/Create[^\r\n]+\/F/i);
+  assert.match(install, /else\s*\{\s*&\s*schtasks\.exe\s+\/Create[^\r\n]+\/XML\s+\$taskXmlPath\s+2>/i);
+  assert.match(install, /previousTaskXml[\s\S]*schtasks\.exe\s+\/Create[^\r\n]+\/F/i);
 });
 
 test('diagnostics expose booleans or versions without sensitive content', () => {
@@ -132,6 +142,11 @@ test('diagnostics expose booleans or versions without sensitive content', () => 
   assert.match(diagnose, /nodeAvailable/);
   assert.match(diagnose, /claudeAuthenticated/);
   assert.match(diagnose, /taskPresent/);
+  assert.match(diagnose, /taskLoginTrigger/);
+  assert.match(diagnose, /taskTwelveMinuteCadence/);
+  assert.match(diagnose, /taskStartWhenAvailable/);
+  assert.match(diagnose, /taskWakeDisabled/);
+  assert.match(diagnose, /taskOverlapDisabled/);
   assert.match(diagnose, /Get-Command\s+'claude'/);
   assert.match(diagnose, /Test-CommandAvailable\s+'codex'/);
   assert.doesNotMatch(diagnose, /Write-Output\s+.*(?:token|email|snapshot|percent|reset|configPath)/i);
@@ -211,6 +226,7 @@ function global:schtasks.exe {
             return
         }
         [xml]$taskXml = [IO.File]::ReadAllText([string]$args[$xmlIndex + 1])
+        $global:createdTaskXml = $taskXml.OuterXml
         $global:createdExecutable = [string]$taskXml.Task.Actions.Exec.Command
         $global:createdArguments = [string]$taskXml.Task.Actions.Exec.Arguments
     }
@@ -229,6 +245,11 @@ function global:Read-Host {
     executableMatches = [StringComparer]::OrdinalIgnoreCase.Equals($global:createdExecutable, $nodePath)
     argumentsContainUpload = $global:createdArguments -match 'upload\.mjs'
     argumentsContainConfig = $global:createdArguments -match 'config\.json'
+    hasLoginTrigger = $global:createdTaskXml -match '<LogonTrigger>'
+    hasTwelveMinuteCadence = $global:createdTaskXml -match '<Interval>PT12M</Interval>'
+    startsWhenAvailable = $global:createdTaskXml -match '<StartWhenAvailable>true</StartWhenAvailable>'
+    wakesComputer = $global:createdTaskXml -match '<WakeToRun>true</WakeToRun>'
+    ignoresOverlap = $global:createdTaskXml -match '<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>'
 } | ConvertTo-Json -Compress
 `);
 
@@ -238,6 +259,11 @@ function global:Read-Host {
   assert.equal(result.observation?.executableMatches, true);
   assert.equal(result.observation?.argumentsContainUpload, true);
   assert.equal(result.observation?.argumentsContainConfig, true);
+  assert.equal(result.observation?.hasLoginTrigger, true);
+  assert.equal(result.observation?.hasTwelveMinuteCadence, true);
+  assert.equal(result.observation?.startsWhenAvailable, true);
+  assert.equal(result.observation?.wakesComputer, false);
+  assert.equal(result.observation?.ignoresOverlap, true);
   assert.doesNotMatch(result.stdout + result.stderr, /fixture-token-value/);
 });
 
