@@ -5,6 +5,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildManagedUrls,
   formatRefreshOption,
+  getArtworkControlNames,
+  getArtworkErrorFocusProvider,
+  getManagedUrlOpenName,
   normalizeArtworkFile,
 } from './configClient.mjs';
 
@@ -30,11 +33,13 @@ const ARTWORK_PROVIDERS = [
   {
     key: 'claude',
     label: 'Claude artwork',
+    accessibleName: 'Claude',
     help: 'Used on the Claude quota panel.',
   },
   {
     key: 'openai',
     label: 'OpenAI artwork',
+    accessibleName: 'Codex',
     help: 'Used on the Codex quota panel.',
   },
 ];
@@ -61,6 +66,7 @@ export default function ConfigPage() {
   const [saveState, setSaveState] = useState('saved');
   const [saveError, setSaveError] = useState('');
   const [artworkState, setArtworkState] = useState(EMPTY_ARTWORK_STATE);
+  const [activeArtworkProvider, setActiveArtworkProvider] = useState(null);
   const [viewToken, setViewToken] = useState('');
   const [origin, setOrigin] = useState('');
   const [previewFailed, setPreviewFailed] = useState(false);
@@ -97,11 +103,12 @@ export default function ConfigPage() {
   }, [saveError]);
 
   useEffect(() => {
-    const provider = ARTWORK_PROVIDERS.find(
-      (item) => artworkState[item.key].error,
-    );
-    if (provider) artworkErrorRefs.current[provider.key]?.focus();
-  }, [artworkState]);
+    const provider = getArtworkErrorFocusProvider({
+      artworkState,
+      activeProvider: activeArtworkProvider,
+    });
+    if (provider) artworkErrorRefs.current[provider]?.focus();
+  }, [activeArtworkProvider, artworkState]);
 
   useEffect(() => {
     if (previewFailed) previewErrorRef.current?.focus();
@@ -136,6 +143,7 @@ export default function ConfigPage() {
       setDraft(config);
       setSaveState('saved');
       setArtworkState(EMPTY_ARTWORK_STATE);
+      setActiveArtworkProvider(null);
     } catch (error) {
       setUnlockError(error instanceof Error ? error.message : '無法載入遠端設定。');
     } finally {
@@ -153,6 +161,7 @@ export default function ConfigPage() {
     setSaveError('');
     setSaveState('saved');
     setArtworkState(EMPTY_ARTWORK_STATE);
+    setActiveArtworkProvider(null);
   };
 
   const setProviderVisible = (provider, visible) => {
@@ -181,6 +190,7 @@ export default function ConfigPage() {
     if (!file) return;
 
     const session = sessionRef.current;
+    setActiveArtworkProvider(provider);
     setArtworkState((current) => ({
       ...current,
       [provider]: { processing: true, error: '' },
@@ -346,6 +356,7 @@ export default function ConfigPage() {
                     const imageDataUrl = draft.providers[provider.key].imageDataUrl;
                     const state = artworkState[provider.key];
                     const helpId = `${provider.key}-artwork-help`;
+                    const controlNames = getArtworkControlNames(provider.accessibleName);
                     return (
                       <article className="artwork-workspace" key={provider.key}>
                         <div className="artwork-heading">
@@ -363,7 +374,7 @@ export default function ConfigPage() {
                           </div>
                         </div>
                         <div className="artwork-controls">
-                          <label htmlFor={`${provider.key}-artwork`}>Upload image</label>
+                          <label htmlFor={`${provider.key}-artwork`}>{controlNames.upload}</label>
                           <input
                             id={`${provider.key}-artwork`}
                             type="file"
@@ -379,7 +390,7 @@ export default function ConfigPage() {
                             onClick={() => setArtwork(provider.key, null)}
                             disabled={!imageDataUrl || state.processing || saving}
                           >
-                            Restore Default
+                            {controlNames.restore}
                           </button>
                         </div>
                         {state.processing ? <p className="inline-status" role="status">Converting to PNG...</p> : null}
@@ -478,14 +489,18 @@ export default function ConfigPage() {
                       <strong>Managed PNG</strong>
                       <code>{managedUrls.dashboardUrl}</code>
                     </div>
-                    <a href={managedUrls.dashboardUrl} target="_blank" rel="noreferrer">Open</a>
+                    <a href={managedUrls.dashboardUrl} target="_blank" rel="noreferrer">
+                      {getManagedUrlOpenName('Managed PNG')}
+                    </a>
                   </div>
                   <div className="url-row">
                     <div>
                       <strong>Device config</strong>
                       <code>{managedUrls.deviceConfigUrl}</code>
                     </div>
-                    <a href={managedUrls.deviceConfigUrl} target="_blank" rel="noreferrer">Open</a>
+                    <a href={managedUrls.deviceConfigUrl} target="_blank" rel="noreferrer">
+                      {getManagedUrlOpenName('Device config')}
+                    </a>
                   </div>
                 </div>
               ) : <p className="band-note">Preparing deployment URLs...</p>}

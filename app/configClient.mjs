@@ -10,6 +10,30 @@ const ALLOWED_REFRESH_INTERVALS = new Set([
   10, 20, 30, 40, 50, 60, 120, 180, 240, 300,
   360, 420, 480, 540, 600, 660, 720, 780, 840, 900,
 ]);
+const PNG_DATA_URL_PREFIX = 'data:image/png;base64,';
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+function isValidPngDataUrl(dataUrl) {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith(PNG_DATA_URL_PREFIX)) {
+    return false;
+  }
+
+  const payload = dataUrl.slice(PNG_DATA_URL_PREFIX.length);
+  if (
+    !payload
+    || payload.length % 4 !== 0
+    || !/^[A-Za-z0-9+/]+={0,2}$/.test(payload)
+  ) {
+    return false;
+  }
+
+  try {
+    const decoded = globalThis.atob(payload);
+    return PNG_SIGNATURE.every((byte, index) => decoded.charCodeAt(index) === byte);
+  } catch {
+    return false;
+  }
+}
 
 export function validateUploadFile(file) {
   if (!file || !ALLOWED_UPLOAD_TYPES.has(file.type)) {
@@ -47,6 +71,22 @@ export function calculateContainRect(width, height) {
     width: containedWidth,
     height: containedHeight,
   };
+}
+
+export function getArtworkErrorFocusProvider({ artworkState, activeProvider }) {
+  const state = activeProvider ? artworkState[activeProvider] : null;
+  return state && !state.processing && state.error ? activeProvider : null;
+}
+
+export function getArtworkControlNames(providerName) {
+  return {
+    upload: `Upload ${providerName} artwork`,
+    restore: `Restore default ${providerName} artwork`,
+  };
+}
+
+export function getManagedUrlOpenName(destination) {
+  return `Open ${destination}`;
 }
 
 async function decodeBrowserImage(file) {
@@ -96,7 +136,7 @@ export async function normalizeArtworkFile(file, adapters = browserAdapters) {
     context.drawImage(image, rect.x, rect.y, rect.width, rect.height);
 
     const dataUrl = await adapters.exportPng(canvas, 'image/png');
-    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,')) {
+    if (!isValidPngDataUrl(dataUrl)) {
       throw new TypeError('Canvas did not export a PNG image.');
     }
     return dataUrl;

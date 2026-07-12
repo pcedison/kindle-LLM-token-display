@@ -5,11 +5,31 @@ import {
   buildManagedUrls,
   calculateContainRect,
   formatRefreshOption,
+  getArtworkControlNames,
+  getArtworkErrorFocusProvider,
+  getManagedUrlOpenName,
   normalizeArtworkFile,
   validateUploadFile,
 } from '../app/configClient.mjs';
 
 const FIVE_MIB = 5 * 1024 * 1024;
+const PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo=';
+
+function createArtworkAdapters({
+  image = { width: 104, height: 96 },
+  context = { fillRect() {}, drawImage() {} },
+  exportPng = () => PNG_DATA_URL,
+} = {}) {
+  return {
+    async decodeImage() {
+      return image;
+    },
+    createCanvas() {
+      return { getContext: () => context };
+    },
+    exportPng,
+  };
+}
 
 test('calculates centered contain rectangles for common aspect ratios', () => {
   assert.deepEqual(calculateContainRect(200, 100), {
@@ -103,6 +123,59 @@ test('builds encoded managed URLs without accepting an admin token', () => {
   );
 });
 
+test('focuses only the active provider new artwork error in either provider order', () => {
+  assert.equal(
+    getArtworkErrorFocusProvider({
+      activeProvider: 'openai',
+      artworkState: {
+        claude: { processing: false, error: 'Old Claude error' },
+        openai: { processing: false, error: 'New Codex error' },
+      },
+    }),
+    'openai',
+  );
+
+  assert.equal(
+    getArtworkErrorFocusProvider({
+      activeProvider: 'claude',
+      artworkState: {
+        claude: { processing: false, error: 'New Claude error' },
+        openai: { processing: false, error: 'Old Codex error' },
+      },
+    }),
+    'claude',
+  );
+});
+
+test('does not focus a retained artwork error while the active provider is processing', () => {
+  assert.equal(
+    getArtworkErrorFocusProvider({
+      activeProvider: 'openai',
+      artworkState: {
+        claude: { processing: false, error: 'Old Claude error' },
+        openai: { processing: true, error: '' },
+      },
+    }),
+    null,
+  );
+});
+
+test('builds provider-specific artwork upload and restore names', () => {
+  assert.deepEqual(getArtworkControlNames('Claude'), {
+    upload: 'Upload Claude artwork',
+    restore: 'Restore default Claude artwork',
+  });
+  assert.deepEqual(getArtworkControlNames('Codex'), {
+    upload: 'Upload Codex artwork',
+    restore: 'Restore default Codex artwork',
+  });
+});
+
+test('builds distinct managed PNG and device config open-link names', () => {
+  assert.equal(getManagedUrlOpenName('Managed PNG'), 'Open Managed PNG');
+  assert.equal(getManagedUrlOpenName('Device config'), 'Open Device config');
+});
+
 test('normalizes artwork onto an opaque 104 x 96 PNG through injected browser adapters', async () => {
   const calls = [];
   const image = { width: 200, height: 100, close: () => calls.push(['close']) };
@@ -135,13 +208,13 @@ test('normalizes artwork onto an opaque 104 x 96 PNG through injected browser ad
     },
     exportPng(receivedCanvas) {
       calls.push(['exportPng', receivedCanvas, 'image/png']);
-      return 'data:image/png;base64,normalized';
+      return PNG_DATA_URL;
     },
   };
 
   const result = await normalizeArtworkFile(file, adapters);
 
-  assert.equal(result, 'data:image/png;base64,normalized');
+  assert.equal(result, PNG_DATA_URL);
   assert.deepEqual(calls, [
     ['decodeImage', file],
     ['createCanvas', 104, 96],
@@ -152,4 +225,120 @@ test('normalizes artwork onto an opaque 104 x 96 PNG through injected browser ad
     ['exportPng', canvas, 'image/png'],
     ['close'],
   ]);
+});
+
+test('closes decoded artwork when PNG export throws', async () => {
+  let closed = false;
+  const adapters = createArtworkAdapters({
+    image: {
+      width: 104,
+      height: 96,
+      close() {
+        closed = true;
+      },
+    },
+    exportPng() {
+      throw new Error('export failed');
+    },
+  });
+
+  await assert.rejects(
+    normalizeArtworkFile({ type: 'image/png', size: 1 }, adapters),
+    /export failed/,
+  );
+  assert.equal(closed, true);
+});
+
+test('rejects empty and malformed PNG base64 exports', async () => {
+  for (const output of [
+    'data:image/png;base64,',
+    'data:image/png;base64,not*base64',
+    'data:image/png;base64,bm90LXBuZw==',
+  ]) {
+    await assert.rejects(
+      normalizeArtworkFile(
+        { type: 'image/png', size: 1 },
+        createArtworkAdapters({ exportPng: () => output }),
+      ),
+      /did not export a PNG/i,
+    );
+  }
+});
+
+test('rejects artwork conversion when a 2D canvas context is unavailable', async () => {
+  await assert.rejects(
+    normalizeArtworkFile(
+      { type: 'image/png', size: 1 },
+      createArtworkAdapters({ context: null }),
+    ),
+    /2D rendering is unavailable/i,
+  );
+});
+
+test('revokes fallback object URLs after successful image conversion', async () => {
+  const originalCreateImageBitmap = globalThis.createImageBitmap;
+  const originalImage = globalThis.Image;
+  const originalDocument = globalThis.document;
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  const revoked = [];
+
+  try {
+    globalThis.createImageBitmap = undefined;
+    URL.createObjectURL = () => 'blob:fallback-success';
+    URL.revokeObjectURL = (url) => revoked.push(url);
+    globalThis.Image = class {
+      width = 104;
+      height = 96;
+
+      async decode() {}
+    };
+    globalThis.document = {
+      createElement() {
+        return {
+          getContext: () => ({ fillRect() {}, drawImage() {} }),
+          toDataURL: () => PNG_DATA_URL,
+        };
+      },
+    };
+
+    await normalizeArtworkFile({ type: 'image/png', size: 1 });
+    assert.deepEqual(revoked, ['blob:fallback-success']);
+  } finally {
+    globalThis.createImageBitmap = originalCreateImageBitmap;
+    globalThis.Image = originalImage;
+    globalThis.document = originalDocument;
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+  }
+});
+
+test('revokes fallback object URLs when image decoding fails', async () => {
+  const originalCreateImageBitmap = globalThis.createImageBitmap;
+  const originalImage = globalThis.Image;
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
+  const revoked = [];
+
+  try {
+    globalThis.createImageBitmap = undefined;
+    URL.createObjectURL = () => 'blob:fallback-failure';
+    URL.revokeObjectURL = (url) => revoked.push(url);
+    globalThis.Image = class {
+      async decode() {
+        throw new Error('decode failed');
+      }
+    };
+
+    await assert.rejects(
+      normalizeArtworkFile({ type: 'image/png', size: 1 }),
+      /decode failed/,
+    );
+    assert.deepEqual(revoked, ['blob:fallback-failure']);
+  } finally {
+    globalThis.createImageBitmap = originalCreateImageBitmap;
+    globalThis.Image = originalImage;
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+  }
 });
