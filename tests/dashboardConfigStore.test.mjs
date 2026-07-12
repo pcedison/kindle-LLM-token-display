@@ -10,6 +10,33 @@ import {
 const FIXED_NOW = '2026-07-12T10:00:00.000Z';
 const SAVED_UPDATED_AT = '2026-07-11T08:30:00.000Z';
 
+test('rejects a path-like profile before store or Blob reads', async () => {
+  let storeReads = 0;
+  let blobGets = 0;
+  const blobStore = createDashboardConfigStore({
+    token: 'test-blob-token',
+    blob: {
+      async get() {
+        blobGets += 1;
+        return null;
+      },
+    },
+  });
+  const store = {
+    async read(profile) {
+      storeReads += 1;
+      return blobStore.read(profile);
+    },
+  };
+
+  await assert.rejects(
+    readDashboardConfig('../usage/latest', { store, now: () => FIXED_NOW }),
+    /dashboard profile/i,
+  );
+  assert.equal(storeReads, 0);
+  assert.equal(blobGets, 0);
+});
+
 test('reads a profile from its private fixed-path Blob without using cache', async () => {
   const requests = [];
   const stored = {
