@@ -1,10 +1,19 @@
 import { homedir, platform } from 'node:os';
 import { join } from 'node:path';
 
-export function stateRoot() {
-  if (process.env.KINDLE_LLM_DASH_STATE_ROOT) return process.env.KINDLE_LLM_DASH_STATE_ROOT;
-  if (platform() === 'win32') return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'KindleLLMDashboard', 'state');
-  return join(process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state'), 'kindle-llm-dashboard');
+export function stateRoot({
+  platformName = platform(),
+  home = homedir(),
+  env = process.env,
+} = {}) {
+  if (env.KINDLE_LLM_DASH_STATE_ROOT) return env.KINDLE_LLM_DASH_STATE_ROOT;
+  if (platformName === 'win32') {
+    return join(env.LOCALAPPDATA || join(home, 'AppData', 'Local'), 'KindleLLMDashboard', 'state');
+  }
+  if (platformName === 'darwin') {
+    return join(home, 'Library', 'Application Support', 'KindleLLMDashboard', 'state');
+  }
+  return join(env.XDG_STATE_HOME || join(home, '.local', 'state'), 'kindle-llm-dashboard');
 }
 
 export function statePath(name, root = stateRoot()) {

@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, open, readFile, readdir, rm, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readJsonState, statePath, stateRoot, writeJsonStateAtomic } from '../collector/lib/localState.mjs';
+import { withCollectorLock } from '../collector/lib/collectorLock.mjs';
 
 test('atomic state write leaves sanitized JSON and no temp file', async () => {
   const root = await mkdtemp(join(tmpdir(), 'collector-state-'));
@@ -48,7 +49,9 @@ test('durability syncs the temporary file and containing directory', async () =>
   }
 });
 
-test('atomic state write retries transient Windows rename contention', async () => {
+test('atomic state write retries transient Windows rename contention', {
+  skip: process.platform !== 'win32',
+}, async () => {
   const root = await mkdtemp(join(tmpdir(), 'collector-rename-retry-'));
   let renameCalls = 0;
   const fakeHandle = () => ({ writeFile: async () => {}, sync: async () => {}, close: async () => {} });
@@ -100,4 +103,55 @@ test('persistent rename contention preserves the destination and removes its tem
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('collector lock prevents overlap and removes its owned lock', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'collector-lock-'));
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const first = withCollectorLock({ stateRoot: root, action: () => held });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  const second = await withCollectorLock({ stateRoot: root, action: async () => 'must-not-run' });
+  assert.deepEqual(second, { skipped: true, reason: 'locked' });
+  release('finished');
+  assert.equal(await first, 'finished');
+  await assert.rejects(readFile(join(root, 'collector.lock')), { code: 'ENOENT' });
+  await rm(root, { recursive: true, force: true });
+});
+
+test('collector lock replaces a stale lock before running', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'collector-stale-lock-'));
+  await writeFile(join(root, 'collector.lock'), JSON.stringify({
+    pid: 99999,
+    createdAt: '2026-07-12T07:00:00.000Z',
+  }));
+
+  const result = await withCollectorLock({
+    stateRoot: root,
+    now: () => Date.parse('2026-07-12T08:00:00.000Z'),
+    staleAfterMs: 120000,
+    action: async () => 'recovered',
+  });
+
+  assert.equal(result, 'recovered');
+  await assert.rejects(readFile(join(root, 'collector.lock')), { code: 'ENOENT' });
+  await rm(root, { recursive: true, force: true });
+});
+
+test('collector lock treats a fresh partially written lock as active', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'collector-partial-lock-'));
+  await writeFile(join(root, 'collector.lock'), '{"pid":');
+  let actionCalls = 0;
+
+  const result = await withCollectorLock({
+    stateRoot: root,
+    now: Date.now,
+    staleAfterMs: 120000,
+    action: async () => { actionCalls += 1; },
+  });
+
+  assert.deepEqual(result, { skipped: true, reason: 'locked' });
+  assert.equal(actionCalls, 0);
+  await rm(root, { recursive: true, force: true });
 });

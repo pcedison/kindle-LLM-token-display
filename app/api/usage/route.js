@@ -58,6 +58,7 @@ export async function handleUsageIngest(request, dependencies = {}) {
   const env = dependencies.env || process.env;
   const logger = dependencies.logger || console;
   const write = dependencies.writeMergedQuotaSnapshot || writeMergedQuotaSnapshot;
+  const now = dependencies.now || Date.now;
   const contentLength = Number(request.headers.get('content-length'));
 
   if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
@@ -82,7 +83,7 @@ export async function handleUsageIngest(request, dependencies = {}) {
 
   let snapshot;
   try {
-    snapshot = normalizeQuotaSnapshot(parsed);
+    snapshot = normalizeQuotaSnapshot(parsed, { receivedAt: now() });
   } catch {
     return response('Invalid request', 400);
   }

@@ -180,7 +180,7 @@ function renderProviderCard(provider, card, layout, index, pikachuSrc) {
           whiteSpace: 'nowrap',
         },
       },
-      `${String(index + 1).padStart(2, '0')} / ${provider.vendorLabel || provider.queryKey.toUpperCase()}${provider.stale ? ' / STALE' : ''}`,
+      `${String(index + 1).padStart(2, '0')} / ${provider.vendorLabel || provider.queryKey.toUpperCase()}${provider.syncLabel ? ` / ${provider.syncLabel}` : ''}`,
     ),
     h(
       'span',

@@ -12,7 +12,7 @@ From the repository root:
 .\collector\install-windows.ps1 -IngestUrl 'https://your-project.vercel.app/api/usage'
 ```
 
-The prompt accepts the Vercel `DASHBOARD_INGEST_TOKEN` as a SecureString. The installer copies the collector to `%LOCALAPPDATA%\KindleLLMDashboard`, protects config and manifest ACLs, backs up Claude settings, registers the project status line, and creates a randomly named `Kindle LLM Quota Uploader-<GUID>` task every five minutes. The protected manifest owns that exact task name and action across reinstalls. Use `-CodexCommand` only when Codex is not on PATH. Use `-ReplaceExistingStatusLine` only after reviewing the timestamped backup.
+The prompt accepts the Vercel `DASHBOARD_INGEST_TOKEN` as a SecureString. The installer copies the collector to `%LOCALAPPDATA%\KindleLLMDashboard`, protects config and manifest ACLs, backs up Claude settings, registers the project status line, and creates a randomly named `Kindle LLM Quota Uploader-<GUID>` task. It runs at sign-in and every 12 minutes while the user session is awake. Missed work may run after resume, but the task never wakes a sleeping computer and overlapping runs are ignored. The protected manifest owns that exact task name and action across reinstalls. Use `-CodexCommand` only when Codex is not on PATH. Use `-ReplaceExistingStatusLine` only after reviewing the timestamped backup.
 
 ## Verify
 
@@ -22,9 +22,11 @@ Run Claude Code once, then:
 .\collector\diagnose-windows.ps1
 ```
 
-Diagnostics intentionally show only booleans and a Node major-version class. Quota values, identity, paths, config content, and command stderr are omitted.
+Diagnostics intentionally show only booleans and a Node major-version class, including checks for the login trigger, 12-minute cadence, missed-run behavior, no-wake setting, and overlap protection. Quota values, identity, paths, config content, and command stderr are omitted.
 
 The first Claude snapshot appears only after an assistant response. Codex must be signed in with ChatGPT. A failed provider does not erase the last valid other-provider snapshot; upload retry uses a bounded backoff.
+
+The task is not a server, and Windows does not need to remain on for Vercel or the Kindle to keep displaying the last accepted snapshot. Codex activity from mobile or cloud sessions is corrected at the next successful 12-minute desktop poll. Claude mobile activity is corrected after the next Claude Code response on an enrolled desktop. A last-sync marker or `SYNC PENDING` row is therefore an expected consistency signal, not a Kindle display failure.
 
 ## Rotate or Recover
 

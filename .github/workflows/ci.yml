@@ -29,6 +29,23 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  macos-test-build:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+          cache: npm
+      - run: npm ci
+      - name: Validate macOS collector shell syntax
+        run: bash -n collector/install-macos.sh collector/diagnose-macos.sh collector/uninstall-macos.sh
+      - run: npm test
+      - run: npm run build
+
   kindle-shell-syntax:
     runs-on: ubuntu-latest
     timeout-minutes: 5

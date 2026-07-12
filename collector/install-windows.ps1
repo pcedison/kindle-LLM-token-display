@@ -149,7 +149,8 @@ function New-CollectorTaskXml {
     param([string]$Executable, [string]$Arguments)
     $service = $null
     $definition = $null
-    $trigger = $null
+    $logonTrigger = $null
+    $timerTrigger = $null
     $action = $null
     try {
         $service = New-Object -ComObject 'Schedule.Service'
@@ -166,13 +167,18 @@ function New-CollectorTaskXml {
         $definition.Settings.DisallowStartIfOnBatteries = $false
         $definition.Settings.StopIfGoingOnBatteries = $false
         $definition.Settings.MultipleInstances = 2
+        $definition.Settings.WakeToRun = $false
         $definition.Settings.ExecutionTimeLimit = 'PT2M'
 
-        $trigger = $definition.Triggers.Create(1)
-        $trigger.StartBoundary = (Get-Date).AddMinutes(1).ToString('yyyy-MM-ddTHH:mm:ss')
-        $trigger.Enabled = $true
-        $trigger.Repetition.Interval = 'PT5M'
-        $trigger.Repetition.StopAtDurationEnd = $false
+        $logonTrigger = $definition.Triggers.Create(9)
+        $logonTrigger.UserId = $identity
+        $logonTrigger.Enabled = $true
+
+        $timerTrigger = $definition.Triggers.Create(1)
+        $timerTrigger.StartBoundary = (Get-Date).AddMinutes(1).ToString('yyyy-MM-ddTHH:mm:ss')
+        $timerTrigger.Enabled = $true
+        $timerTrigger.Repetition.Interval = 'PT12M'
+        $timerTrigger.Repetition.StopAtDurationEnd = $false
 
         $action = $definition.Actions.Create(0)
         $action.Path = $Executable
@@ -184,7 +190,8 @@ function New-CollectorTaskXml {
     }
     finally {
         if ($action) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($action) }
-        if ($trigger) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($trigger) }
+        if ($timerTrigger) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($timerTrigger) }
+        if ($logonTrigger) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($logonTrigger) }
         if ($definition) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($definition) }
         if ($service) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($service) }
     }
@@ -315,8 +322,10 @@ $installBackup = $null
 $newInstallStarted = $false
 $taskRegistrationAttempted = $false
 $taskRollbackFailed = $false
+$previousTaskXml = if ($existingTaskAction) { [string]$existingTaskAction.xml } else { $null }
 $backupCreatedThisRun = $false
 $taskXmlPath = $null
+$previousTaskXmlPath = $null
 try {
     if (-not $previousManifest -and $settingsExisted) {
         Copy-Item -LiteralPath $ClaudeSettingsPath -Destination $backupPath
@@ -335,13 +344,47 @@ try {
     $plainToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
     if ([string]::IsNullOrWhiteSpace($plainToken)) { throw 'Dashboard ingest token is required' }
 
+    if ($taskExistedBefore) {
+        & schtasks.exe /End /TN $TaskName 2>$null | Out-Null
+    }
     if (Test-Path -LiteralPath $InstallRoot) {
         $installBackup = "$InstallRoot.rollback.$([Guid]::NewGuid().ToString('N'))"
         Move-Item -LiteralPath $InstallRoot -Destination $installBackup
     }
     $newInstallStarted = $true
     New-Item -ItemType Directory -Force -Path $CollectorRoot | Out-Null
-    Copy-Item -Path (Join-Path $PSScriptRoot '*') -Destination $CollectorRoot -Recurse -Force
+    $requiredRuntimeFiles = @(
+        'claude-statusline.mjs',
+        'upload.mjs',
+        'lib\claudeStatus.mjs',
+        'lib\codexRateLimits.mjs',
+        'lib\collectorConfig.mjs',
+        'lib\collectorLock.mjs',
+        'lib\collectorSecret.mjs',
+        'lib\localState.mjs',
+        'lib\paths.mjs',
+        'lib\runCollector.mjs',
+        'lib\triggerUpload.mjs',
+        'lib\uploadClient.mjs'
+    )
+    foreach ($runtimeFile in $requiredRuntimeFiles) {
+        $runtimeSource = Join-Path $PSScriptRoot $runtimeFile
+        $runtimeDestination = Join-Path $CollectorRoot $runtimeFile
+        if (-not (Test-Path -LiteralPath $runtimeSource -PathType Leaf)) { throw 'Collector runtime is incomplete' }
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $runtimeDestination) | Out-Null
+        Copy-Item -LiteralPath $runtimeSource -Destination $runtimeDestination -Force
+    }
+    if ($installBackup) {
+        $previousStateRoot = Join-Path $installBackup 'state'
+        $newStateRoot = Join-Path $InstallRoot 'state'
+        foreach ($stateName in @('claude.json', 'last-upload.json', 'upload-backoff.json')) {
+            $stateSource = Join-Path $previousStateRoot $stateName
+            if (Test-Path -LiteralPath $stateSource -PathType Leaf) {
+                New-Item -ItemType Directory -Force -Path $newStateRoot | Out-Null
+                Copy-Item -LiteralPath $stateSource -Destination (Join-Path $newStateRoot $stateName) -Force
+            }
+        }
+    }
     $projectRoot = Split-Path -Parent $PSScriptRoot
     $contractSource = Join-Path $projectRoot 'app\api\dashboard\quotaSnapshot.mjs'
     $contractDestination = Join-Path $InstallRoot 'app\api\dashboard\quotaSnapshot.mjs'
@@ -381,22 +424,27 @@ try {
     $settingsMutationStarted = $true
     Write-JsonAtomic -Path $ClaudeSettingsPath -Value $settings
 
-    if (-not $taskExistedBefore) {
-        $taskRegistrationAttempted = $true
-        $taskXmlPath = Join-Path $env:TEMP ("kindle-llm-task-$([Guid]::NewGuid().ToString('N')).xml")
-        $taskXml = New-CollectorTaskXml -Executable $nodePath -Arguments $taskArguments
-        [IO.File]::WriteAllText($taskXmlPath, $taskXml, [Text.Encoding]::Unicode)
-        $previousErrorActionPreference = $ErrorActionPreference
-        try {
-            $ErrorActionPreference = 'Continue'
+    $taskRegistrationAttempted = $true
+    $taskXmlPath = Join-Path $env:TEMP ("kindle-llm-task-$([Guid]::NewGuid().ToString('N')).xml")
+    $taskXml = New-CollectorTaskXml -Executable $nodePath -Arguments $taskArguments
+    [IO.File]::WriteAllText($taskXmlPath, $taskXml, [Text.Encoding]::Unicode)
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        if ($taskExistedBefore) {
+            $currentTaskAction = Get-ScheduledTaskAction -Name $TaskName -RequireReliableAbsence
+            Assert-TaskActionMatchesManifest -TaskAction $currentTaskAction -Manifest $previousManifest -FailureMessage 'Refusing to replace a foreign scheduled task'
+            & schtasks.exe /Create /TN $TaskName /XML $taskXmlPath /F 2>$null | Out-Null
+        }
+        else {
             & schtasks.exe /Create /TN $TaskName /XML $taskXmlPath 2>$null | Out-Null
-            $taskCreateExitCode = $LASTEXITCODE
         }
-        finally {
-            $ErrorActionPreference = $previousErrorActionPreference
-        }
-        if ($taskCreateExitCode -ne 0) { throw 'Unable to register collector task' }
+        $taskCreateExitCode = $LASTEXITCODE
     }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($taskCreateExitCode -ne 0) { throw 'Unable to register collector task' }
 
     if ($installBackup -and (Test-Path -LiteralPath $installBackup)) {
         Remove-Item -LiteralPath $installBackup -Recurse -Force
@@ -404,7 +452,18 @@ try {
     }
 }
 catch {
-    if (-not $taskExistedBefore -and $taskRegistrationAttempted) {
+    if ($taskExistedBefore -and $taskRegistrationAttempted -and $previousTaskXml) {
+        try {
+            $previousTaskXmlPath = Join-Path $env:TEMP ("kindle-llm-task-restore-$([Guid]::NewGuid().ToString('N')).xml")
+            [IO.File]::WriteAllText($previousTaskXmlPath, $previousTaskXml, [Text.Encoding]::Unicode)
+            & schtasks.exe /Create /TN $TaskName /XML $previousTaskXmlPath /F 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) { $taskRollbackFailed = $true }
+        }
+        catch {
+            $taskRollbackFailed = $true
+        }
+    }
+    elseif (-not $taskExistedBefore -and $taskRegistrationAttempted) {
         try {
             $createdTaskAction = Get-ScheduledTaskAction -Name $TaskName -RequireReliableAbsence
             if ($createdTaskAction) {
@@ -454,6 +513,7 @@ finally {
     $plainToken = $null
     $secureToken = $null
     if ($taskXmlPath -and (Test-Path -LiteralPath $taskXmlPath)) { Remove-Item -LiteralPath $taskXmlPath -Force -ErrorAction SilentlyContinue }
+    if ($previousTaskXmlPath -and (Test-Path -LiteralPath $previousTaskXmlPath)) { Remove-Item -LiteralPath $previousTaskXmlPath -Force -ErrorAction SilentlyContinue }
     if ($settingsRollbackPath -and (Test-Path -LiteralPath $settingsRollbackPath)) { Remove-Item -LiteralPath $settingsRollbackPath -Force -ErrorAction SilentlyContinue }
 }
 

@@ -6,23 +6,24 @@ function finitePercent(value) {
   return Number.isFinite(value) ? Math.min(100, Math.max(0, Number(value))) : null;
 }
 
-function normalizeWindow(value) {
+function normalizeWindow(value, collectedAt) {
   if (!value || typeof value !== 'object') return null;
   const usedPercent = finitePercent(value.used_percentage);
   const resetsAt = Number(value.resets_at);
   if (usedPercent === null || !Number.isInteger(resetsAt) || resetsAt < MIN_RESET_EPOCH || resetsAt > MAX_RESET_EPOCH) return null;
-  return { usedPercent, resetsAt };
+  return { usedPercent, resetsAt, collectedAt };
 }
 
-export function parseClaudeStatus(input) {
+export function parseClaudeStatus(input, { now = Date.now } = {}) {
   const parsed = typeof input === 'string' ? JSON.parse(input) : input;
   const source = parsed?.rate_limits;
+  const collectedAt = new Date(now()).toISOString();
   const windows = {};
   for (const [official, normalized] of Object.entries(WINDOWS)) {
-    const window = normalizeWindow(source?.[official]);
+    const window = normalizeWindow(source?.[official], collectedAt);
     if (window) windows[normalized] = window;
   }
-  return { collectedAt: new Date().toISOString(), windows };
+  return { collectedAt, windows };
 }
 
 function percentage(value) {

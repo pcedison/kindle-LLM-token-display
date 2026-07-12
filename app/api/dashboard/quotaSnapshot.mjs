@@ -1,8 +1,10 @@
 const PROVIDER_KEYS = ['claude', 'codex'];
 const WINDOW_KEYS = ['fiveHour', 'sevenDay'];
+const SUPPORTED_VERSIONS = new Set([1, 2]);
 const SENSITIVE_KEY_PATTERN = /token|secret|cookie|authorization|api[_-]?key|email|accountid|orgid|prompt|transcript/i;
 const MIN_RESET_EPOCH = Date.UTC(2020, 0, 1) / 1000;
 const MAX_RESET_EPOCH = Date.UTC(2100, 0, 1) / 1000;
+const MAX_FUTURE_SKEW_MS = 10 * 60 * 1000;
 
 function assertNoSensitiveFields(value, seen = new WeakSet()) {
   if (!value || typeof value !== 'object') {
@@ -22,8 +24,28 @@ function assertNoSensitiveFields(value, seen = new WeakSet()) {
   }
 }
 
-function normalizeWindow(window) {
-  if (!window || typeof window !== 'object') {
+function normalizeCollectedAt(value, receivedAt) {
+  const collectedAt = new Date(value);
+  const collectedAtMs = collectedAt.getTime();
+  if (Number.isNaN(collectedAtMs)) {
+    throw new TypeError('Invalid collectedAt');
+  }
+
+  if (receivedAt !== undefined) {
+    const receivedAtMs = new Date(receivedAt).getTime();
+    if (Number.isNaN(receivedAtMs)) {
+      throw new TypeError('Invalid receivedAt');
+    }
+    if (collectedAtMs - receivedAtMs > MAX_FUTURE_SKEW_MS) {
+      throw new TypeError('collectedAt exceeds allowed clock skew');
+    }
+  }
+
+  return collectedAt.toISOString();
+}
+
+function normalizeWindow(window, fallbackCollectedAt, receivedAt) {
+  if (!window || typeof window !== 'object' || Array.isArray(window)) {
     throw new TypeError('Invalid quota window');
   }
 
@@ -38,18 +60,19 @@ function normalizeWindow(window) {
   return {
     usedPercent: Math.min(Math.max(usedPercent, 0), 100),
     resetsAt,
+    collectedAt: normalizeCollectedAt(window.collectedAt ?? fallbackCollectedAt, receivedAt),
   };
 }
 
-function normalizeCollectedAt(value) {
-  const collectedAt = new Date(value);
-  if (Number.isNaN(collectedAt.getTime())) {
-    throw new TypeError('Invalid collectedAt');
+function newestCollectedAt(values) {
+  const timestamps = values.filter(Boolean).map((value) => Date.parse(value));
+  if (timestamps.length === 0) {
+    return undefined;
   }
-  return collectedAt.toISOString();
+  return new Date(Math.max(...timestamps)).toISOString();
 }
 
-function normalizeProviders(providers, fallbackCollectedAt) {
+function normalizeProviders(providers, fallbackCollectedAt, receivedAt) {
   if (providers === undefined || providers === null) {
     return {};
   }
@@ -66,10 +89,11 @@ function normalizeProviders(providers, fallbackCollectedAt) {
     if (typeof provider !== 'object' || Array.isArray(provider)) {
       throw new TypeError(`Invalid provider: ${providerKey}`);
     }
-    const providerCollectedAt = normalizeCollectedAt(
-      provider.collectedAt ?? fallbackCollectedAt,
-    );
 
+    const providerFallback = normalizeCollectedAt(
+      provider.collectedAt ?? fallbackCollectedAt,
+      receivedAt,
+    );
     const windows = provider.windows;
     if (windows === undefined || windows === null) {
       continue;
@@ -81,12 +105,18 @@ function normalizeProviders(providers, fallbackCollectedAt) {
     const normalizedWindows = {};
     for (const windowKey of WINDOW_KEYS) {
       if (windows[windowKey] !== undefined && windows[windowKey] !== null) {
-        normalizedWindows[windowKey] = normalizeWindow(windows[windowKey]);
+        normalizedWindows[windowKey] = normalizeWindow(
+          windows[windowKey],
+          providerFallback,
+          receivedAt,
+        );
       }
     }
     if (Object.keys(normalizedWindows).length > 0) {
       normalized[providerKey] = {
-        collectedAt: providerCollectedAt,
+        collectedAt: newestCollectedAt(
+          Object.values(normalizedWindows).map(({ collectedAt }) => collectedAt),
+        ),
         windows: normalizedWindows,
       };
     }
@@ -95,23 +125,30 @@ function normalizeProviders(providers, fallbackCollectedAt) {
 }
 
 function emptySnapshot(collectedAt) {
-  return { version: 1, collectedAt: normalizeCollectedAt(collectedAt), providers: {} };
+  return { version: 2, collectedAt: normalizeCollectedAt(collectedAt), providers: {} };
+}
+
+function mergeWindow(leftWindow, rightWindow) {
+  if (!rightWindow) return leftWindow;
+  if (!leftWindow) return rightWindow;
+  return Date.parse(rightWindow.collectedAt) >= Date.parse(leftWindow.collectedAt)
+    ? rightWindow
+    : leftWindow;
 }
 
 function mergeProvider(leftProvider, rightProvider) {
   if (!rightProvider) return leftProvider;
   if (!leftProvider) return rightProvider;
 
-  const leftCollectedAt = Date.parse(leftProvider.collectedAt);
-  const rightCollectedAt = Date.parse(rightProvider.collectedAt);
-  if (rightCollectedAt < leftCollectedAt) return leftProvider;
+  const windows = {};
+  for (const windowKey of WINDOW_KEYS) {
+    const window = mergeWindow(leftProvider.windows[windowKey], rightProvider.windows[windowKey]);
+    if (window) windows[windowKey] = window;
+  }
 
   return {
-    collectedAt: rightProvider.collectedAt,
-    windows: {
-      ...leftProvider.windows,
-      ...rightProvider.windows,
-    },
+    collectedAt: newestCollectedAt(Object.values(windows).map(({ collectedAt }) => collectedAt)),
+    windows,
   };
 }
 
@@ -122,27 +159,35 @@ function mergeOnlyPresentWindows(left, right) {
     if (provider) providers[providerKey] = provider;
   }
 
-  const timestamps = [left.collectedAt, right.collectedAt]
-    .concat(Object.values(providers).map(({ collectedAt }) => collectedAt))
-    .map(Date.parse);
+  const newestWindow = newestCollectedAt(
+    Object.values(providers).flatMap(({ windows }) =>
+      Object.values(windows).map(({ collectedAt }) => collectedAt)),
+  );
 
   return {
-    version: 1,
-    collectedAt: new Date(Math.max(...timestamps)).toISOString(),
+    version: 2,
+    collectedAt: newestWindow || newestCollectedAt([left.collectedAt, right.collectedAt]),
     providers,
   };
 }
 
-export function normalizeQuotaSnapshot(input) {
+export function normalizeQuotaSnapshot(input, { receivedAt } = {}) {
   assertNoSensitiveFields(input);
-  if (input?.version !== 1) {
+  if (!SUPPORTED_VERSIONS.has(input?.version)) {
     throw new TypeError('Unsupported snapshot version');
   }
-  const collectedAt = normalizeCollectedAt(input.collectedAt);
+
+  const fallbackCollectedAt = normalizeCollectedAt(input.collectedAt, receivedAt);
+  const providers = normalizeProviders(input.providers, fallbackCollectedAt, receivedAt);
+  const newestWindow = newestCollectedAt(
+    Object.values(providers).flatMap(({ windows }) =>
+      Object.values(windows).map(({ collectedAt }) => collectedAt)),
+  );
+
   return {
-    version: 1,
-    collectedAt,
-    providers: normalizeProviders(input.providers, collectedAt),
+    version: 2,
+    collectedAt: newestWindow || fallbackCollectedAt,
+    providers,
   };
 }
 
