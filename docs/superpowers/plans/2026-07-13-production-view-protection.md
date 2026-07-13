@@ -19,6 +19,10 @@ resolver and an isolated local-only fixture mode.
 ## Global Constraints
 
 - Every repository PR runs the exact fixed gate in `2026-07-13-project-hardening-master.md`; the shorter commands below are additional focused gates, not replacements.
+- Every complete PowerShell block in this plan runs through the master plan's
+  `Invoke-FailClosedPowerShellPlanBlock` runner. Raw `pwsh -Command -`, pasted or
+  line-by-line standard input, and any runner that can turn `throw` into exit
+  code 0 are prohibited for gates and mutations.
 
 - Never display the view token. Its permitted holders are Vercel, private Kindle `env.sh`, and one current-user DPAPI-encrypted operator file used for later authenticated smoke; the operator file is outside the repository and deleted after final acceptance unless the user explicitly retains it as an authorized read client.
 - The newly generated view token must have this run's CSPRNG/32-byte/independent
@@ -187,7 +191,7 @@ function Invoke-BoundedJsonNative {
     if ($document -isnot [Management.Automation.PSCustomObject] -or $document -is [Array]) {
         throw "$FailureMessage (JSON root is not one object)"
     }
-    return Write-Output -NoEnumerate $document
+    return $document
 }
 
 function ConvertTo-ExactEnvironmentMetadataProjection {
@@ -731,7 +735,7 @@ function Invoke-BoundedJsonNative {
     if ($document -isnot [Management.Automation.PSCustomObject] -or $document -is [Array]) {
         throw "$FailureMessage (JSON root is not one object)"
     }
-    return Write-Output -NoEnumerate $document
+    return $document
 }
 
 function Invoke-VercelProjectGet([string]$Id) {
@@ -2896,7 +2900,7 @@ function Invoke-BoundedJsonNative {
     if ($document -isnot [Management.Automation.PSCustomObject] -or $document -is [Array]) {
         throw "$FailureMessage (JSON root is not one object)"
     }
-    return Write-Output -NoEnumerate $document
+    return $document
 }
 
 function Get-ExactScalarStringProperty {
