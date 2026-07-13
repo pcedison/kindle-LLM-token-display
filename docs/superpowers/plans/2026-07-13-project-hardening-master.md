@@ -47,6 +47,182 @@
 - A feature-branch push is not a production deployment; record local, PR, CI, merge, and Vercel deployment SHAs separately.
 - Stop after every phase and obtain user approval before continuing.
 
+## Fail-Closed PowerShell Plan-Block Runner
+
+PowerShell 7.4 or later is required. Raw `pwsh -Command -`, pasted or
+line-by-line standard input, and any equivalent runner that can continue after
+`throw` or report exit code 0 after a terminating error are prohibited for every
+gate and mutation block. Assemble the complete approved block, including every
+prerequisite it needs, as one string and invoke it once through the runner
+below. The encoded launcher contains only fixed runner code; plan source,
+credentials, and other runtime values stay out of process arguments. A failed
+child emits no captured details and the parent throws only the fixed message
+`PowerShell plan block failed`.
+
+Load this definition and its probes as one PowerShell 7.4-or-later script unit
+before any other PowerShell block. After the probes pass, call
+`Invoke-FailClosedPowerShellPlanBlock` for every complete PowerShell plan block;
+never paste a plan block directly into a `pwsh` standard-input session.
+
+```powershell
+function Invoke-FailClosedPowerShellPlanBlock {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$PlanBlockSource
+    )
+
+    if ($PSVersionTable.PSVersion -lt [version]'7.4') {
+        throw 'PowerShell 7.4 or later is required'
+    }
+
+    $launcherSource = @'
+$ErrorActionPreference = 'Stop'
+
+try {
+    if (-not (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue)) {
+        throw 'Native error preference unavailable'
+    }
+    $PSNativeCommandUseErrorActionPreference = $true
+
+    $source = [Console]::In.ReadToEnd()
+    if ([string]::IsNullOrWhiteSpace($source)) {
+        throw 'Empty plan block'
+    }
+
+    $planBlock = [ScriptBlock]::Create($source)
+    & $planBlock
+    exit 0
+} catch {
+    [Console]::Error.WriteLine('PowerShell plan block failed')
+    exit 1
+}
+'@
+
+    try {
+        $pwsh = [Environment]::ProcessPath
+        $encodedLauncher = [Convert]::ToBase64String(
+            [Text.Encoding]::Unicode.GetBytes($launcherSource)
+        )
+        $startInfo = [Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $pwsh
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardInput = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $startInfo.ArgumentList.Add('-NoLogo')
+        $startInfo.ArgumentList.Add('-NoProfile')
+        $startInfo.ArgumentList.Add('-NonInteractive')
+        $startInfo.ArgumentList.Add('-EncodedCommand')
+        $startInfo.ArgumentList.Add($encodedLauncher)
+
+        $process = [Diagnostics.Process]::new()
+        $process.StartInfo = $startInfo
+        if (-not $process.Start()) {
+            throw 'PowerShell plan block failed'
+        }
+
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.StandardInput.Write($PlanBlockSource)
+        $process.StandardInput.Close()
+        $process.WaitForExit()
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $null = $stderrTask.GetAwaiter().GetResult()
+
+        if ($process.ExitCode -ne 0) {
+            throw 'PowerShell plan block failed'
+        }
+
+        if (-not [string]::IsNullOrEmpty($stdout)) {
+            $stdout.TrimEnd([char[]]"`r`n")
+        }
+    } catch {
+        throw 'PowerShell plan block failed'
+    } finally {
+        if ($null -ne $process) {
+            $process.Dispose()
+        }
+    }
+}
+
+function ConvertFrom-StrictProbeJson {
+    param([Parameter(Mandatory)][string]$RawJson)
+
+    if (-not $RawJson.TrimStart().StartsWith('{', [StringComparison]::Ordinal)) {
+        throw 'Strict JSON probe failed'
+    }
+
+    $document = $RawJson | ConvertFrom-Json -NoEnumerate
+    if (
+        $document -is [Array] -or
+        $document.GetType() -ne [Management.Automation.PSCustomObject]
+    ) {
+        throw 'Strict JSON probe failed'
+    }
+
+    return $document
+}
+
+$successOutput = Invoke-FailClosedPowerShellPlanBlock -PlanBlockSource "'runner-ok'"
+if ($successOutput -cne 'runner-ok') {
+    throw 'PowerShell runner success probe failed'
+}
+
+$failureMessage = $null
+try {
+    Invoke-FailClosedPowerShellPlanBlock -PlanBlockSource "throw 'synthetic failure'" |
+        Out-Null
+} catch {
+    $failureMessage = $_.Exception.Message
+}
+if ($failureMessage -cne 'PowerShell plan block failed') {
+    throw 'PowerShell runner failure probe failed'
+}
+
+$nativeFailureMessage = $null
+try {
+    $nativeFailureSource = "& ([Environment]::ProcessPath) -NoLogo -NoProfile -NonInteractive -Command 'exit 7'"
+    Invoke-FailClosedPowerShellPlanBlock -PlanBlockSource $nativeFailureSource |
+        Out-Null
+} catch {
+    $nativeFailureMessage = $_.Exception.Message
+}
+if ($nativeFailureMessage -cne 'PowerShell plan block failed') {
+    throw 'PowerShell native-failure probe failed'
+}
+
+$validProbe = ConvertFrom-StrictProbeJson -RawJson '{"ok":true}'
+if (
+    $validProbe -is [Array] -or
+    $validProbe.GetType() -ne [Management.Automation.PSCustomObject]
+) {
+    throw 'PowerShell object-shape probe failed'
+}
+
+$rejectedArrayCount = 0
+foreach ($rawArray in @('[]', '[{}]', '[{},{}]')) {
+    try {
+        ConvertFrom-StrictProbeJson -RawJson $rawArray | Out-Null
+    } catch {
+        $rejectedArrayCount += 1
+    }
+}
+if ($rejectedArrayCount -ne 3) {
+    throw 'PowerShell array-rejection probe failed'
+}
+
+[pscustomobject]@{
+    RunnerSuccess = $true
+    SyntheticThrowRejected = $true
+    NativeFailureRejected = $true
+    ValidRootType = $validProbe.GetType().FullName
+    RejectedRawArrays = $rejectedArrayCount
+}
+```
+
 ## Fixed Gate for Every Pull Request
 
 PR 1 first adds a test-only switch to the existing real Next integration test:
@@ -338,7 +514,7 @@ function Invoke-BoundedJsonNative {
     if ($document -isnot [Management.Automation.PSCustomObject] -or $document -is [Array]) {
         throw "$FailureMessage (JSON root is not one object)"
     }
-    return Write-Output -NoEnumerate $document
+    return $document
 }
 
 function Get-StrictEnvironmentMetadataProjection {
