@@ -18,6 +18,27 @@ export function authorizeBearer(authorization, expected) {
   return safeTokenEqual(authorization.slice('Bearer '.length), expected);
 }
 
-export function authorizeDashboardView(url, expected) {
-  return !expected || safeTokenEqual(url.searchParams.get('key'), expected);
+export function resolveDashboardViewAccess(
+  url,
+  env = {},
+  { allowLocalFixture = false } = {},
+) {
+  const viewToken = typeof env.DASHBOARD_VIEW_TOKEN === 'string'
+    ? env.DASHBOARD_VIEW_TOKEN
+    : '';
+  const fixtureRequested = env.DASHBOARD_PUBLIC_FIXTURE === 'true';
+
+  if (fixtureRequested) {
+    const fixtureAllowed = allowLocalFixture
+      && !viewToken
+      && !env.VERCEL_ENV
+      && env.NODE_ENV !== 'production'
+      && url.searchParams.get('managed') !== 'true';
+    return fixtureAllowed ? 'fixture' : 'misconfigured';
+  }
+
+  if (!viewToken) return 'misconfigured';
+  return safeTokenEqual(url.searchParams.get('key'), viewToken)
+    ? 'authorized'
+    : 'unauthorized';
 }

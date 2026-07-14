@@ -57,7 +57,7 @@ test('device config fails closed without a view token or under fixture mode', as
 test('resolves the requested profile before reading its normalized config', async () => {
   const profiles = [];
   const handler = createDeviceConfigHandler({
-    env: {},
+    env: { DASHBOARD_VIEW_TOKEN: 'fixture-view-token' },
     readDashboardConfig: async (profile) => {
       profiles.push(profile);
       return storedConfig({ profile, refreshIntervalSeconds: 300 });
@@ -65,7 +65,7 @@ test('resolves the requested profile before reading its normalized config', asyn
   });
 
   const response = await handler(
-    new Request('https://dashboard.test/api/device-config?profile=paperwhite3&w=600&h=800'),
+    new Request('https://dashboard.test/api/device-config?profile=paperwhite3&w=600&h=800&key=fixture-view-token'),
   );
 
   assert.equal(response.status, 200);

@@ -1,6 +1,6 @@
 import { readDashboardConfig } from '../config/dashboardConfigStore.mjs';
 import { resolveDashboardProfile } from '../dashboard/kindleProfiles.mjs';
-import { authorizeDashboardView } from '../dashboard/requestAuth.mjs';
+import { resolveDashboardViewAccess } from '../dashboard/requestAuth.mjs';
 
 const NO_STORE = 'no-store, max-age=0, must-revalidate';
 
@@ -10,7 +10,14 @@ export function createDeviceConfigHandler({
 } = {}) {
   return async function deviceConfigHandler(request) {
     const url = new URL(request.url);
-    if (!authorizeDashboardView(url, env.DASHBOARD_VIEW_TOKEN)) {
+    const access = resolveDashboardViewAccess(url, env);
+    if (access === 'misconfigured') {
+      return new Response('Service unavailable', {
+        status: 503,
+        headers: { 'Cache-Control': NO_STORE },
+      });
+    }
+    if (access === 'unauthorized') {
       return new Response('Unauthorized', {
         status: 401,
         headers: { 'Cache-Control': NO_STORE },

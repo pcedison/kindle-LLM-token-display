@@ -145,7 +145,7 @@ function liveSnapshot(overrides = {}) {
 
 async function renderFixture({
   snapshot = null,
-  env = {},
+  env = { DASHBOARD_VIEW_TOKEN: 'fixture-view-token' },
   query = '',
   readDashboardConfig,
   resolvePikachuSrc = () => PIKACHU_DATA_URL,
@@ -157,7 +157,10 @@ async function renderFixture({
     readDashboardConfig,
     resolvePikachuSrc,
   });
-  const response = await handler(new Request(`https://dashboard.test/api/dashboard?${query}`));
+  const url = new URL('https://dashboard.test/api/dashboard');
+  for (const [key, value] of new URLSearchParams(query)) url.searchParams.append(key, value);
+  if (env.DASHBOARD_VIEW_TOKEN) url.searchParams.set('key', env.DASHBOARD_VIEW_TOKEN);
+  const response = await handler(new Request(url));
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('content-type'), 'image/png');
   assert.match(response.headers.get('cache-control') || '', /no-store/);

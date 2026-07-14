@@ -8,7 +8,7 @@ import { resolveDashboardProfile } from './kindleProfiles.mjs';
 import { getQuotaFillPercent, getQuotaLayout } from './layoutModel.mjs';
 import { getProviderCards } from './providerData.mjs';
 import { readQuotaSnapshot } from './quotaStore.mjs';
-import { authorizeDashboardView } from './requestAuth.mjs';
+import { resolveDashboardViewAccess } from './requestAuth.mjs';
 
 function isVisible(searchParams, key, defaultVisible) {
   const value = searchParams.get(key);
@@ -329,14 +329,21 @@ export function createDashboardHandler({
 } = {}) {
   return async function dashboardHandler(request) {
     const url = new URL(request.url);
-    if (!authorizeDashboardView(url, env.DASHBOARD_VIEW_TOKEN)) {
+    const access = resolveDashboardViewAccess(url, env, { allowLocalFixture: true });
+    if (access === 'misconfigured') {
+      return new Response('Service unavailable', {
+        status: 503,
+        headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' },
+      });
+    }
+    if (access === 'unauthorized') {
       return new Response('Unauthorized', {
         status: 401,
         headers: { 'Cache-Control': 'no-store, max-age=0, must-revalidate' },
       });
     }
 
-    const snapshot = await readSnapshot();
+    const snapshot = access === 'fixture' ? null : await readSnapshot();
     const renderNow = now();
     const cards = getProviderCards({ snapshot, env, now: renderNow });
     const profile = resolveDashboardProfile(url.searchParams);
