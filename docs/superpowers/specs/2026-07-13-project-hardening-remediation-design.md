@@ -1,8 +1,13 @@
 # Project Hardening and Remediation Design
 
+> **Historical / superseded:** the 2026-07-14 scope reset retired this document's
+> execution model, including every fixed test-count and coverage gate. Keep this
+> only as design history; current work follows `PROJECT_STATUS.md` and
+> `docs/SCOPE-RESET.md`.
+
 **Date:** 2026-07-13
 
-**Status:** Original design and construction plan approved 2026-07-13; commit-level safety amendments pending publication re-review
+**Status:** Historical; superseded by the 2026-07-14 scope reset
 
 **Canonical repository:** `https://github.com/pcedison/kindle-LLM-token-display`
 
