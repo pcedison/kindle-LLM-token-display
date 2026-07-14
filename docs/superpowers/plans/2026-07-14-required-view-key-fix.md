@@ -320,6 +320,7 @@ Add these new tracked paths to the gate's exact `origin/main..HEAD` allowlist:
 ```text
 app/configClient.mjs
 app/page.js
+docs/ARCHITECTURE.md
 docs/superpowers/plans/2026-07-14-required-view-key-fix.md
 docs/superpowers/specs/2026-07-14-required-view-key-design.md
 tests/configClient.test.mjs
