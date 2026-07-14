@@ -239,3 +239,15 @@ test('public docs explain authenticated remote settings and one-time Kindle migr
   assert.match(security, /Kindle receives[\s\S]{0,160}device configuration/i);
   assert.match(security, /Private Blob stores[\s\S]{0,160}managed display configuration/i);
 });
+
+test('settings editor requires a view key before presenting private URLs', () => {
+  const page = readFileSync('app/page.js', 'utf8');
+  const viewTokenInput =
+    page.match(/<input(?:(?!\/>)[\s\S])*id="view-token"(?:(?!\/>)[\s\S])*\/>/)?.[0] ?? '';
+
+  assert.match(page, /View key \(required\)/);
+  assert.doesNotMatch(page, /View key \(optional\)/);
+  assert.match(viewTokenInput, /\brequired\b/);
+  assert.match(page, /Enter the required view key to generate private Kindle URLs/i);
+  assert.match(page, /Enter the required view key to load the authenticated preview/i);
+});

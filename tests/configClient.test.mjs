@@ -100,11 +100,11 @@ test('formats exact refresh labels with clear power guidance', () => {
   assert.equal(formatRefreshOption(900), '15 分鐘');
 });
 
-test('builds encoded managed URLs without accepting an admin token', () => {
+test('builds encoded managed URLs only with a required view key', () => {
   const urls = buildManagedUrls({
     origin: 'https://dashboard.example/',
     profile: 'dp75sdi',
-    viewToken: 'view key&private',
+    viewToken: '  view key&private  ',
     adminToken: 'must-not-appear',
   });
 
@@ -116,19 +116,16 @@ test('builds encoded managed URLs without accepting an admin token', () => {
   });
   assert.doesNotMatch(JSON.stringify(urls), /must-not-appear/);
 
-  assert.deepEqual(
-    buildManagedUrls({
-      origin: 'https://dashboard.example',
-      profile: 'voyage',
-      viewToken: '',
-    }),
-    {
-      dashboardUrl:
-        'https://dashboard.example/api/dashboard?profile=voyage&managed=true',
-      deviceConfigUrl:
-        'https://dashboard.example/api/device-config?profile=voyage',
-    },
-  );
+  for (const viewToken of [undefined, null, 42, '', '   ']) {
+    assert.equal(
+      buildManagedUrls({
+        origin: 'https://dashboard.example',
+        profile: 'voyage',
+        viewToken,
+      }),
+      null,
+    );
+  }
 });
 
 test('focuses only the active provider new artwork error in either provider order', () => {
