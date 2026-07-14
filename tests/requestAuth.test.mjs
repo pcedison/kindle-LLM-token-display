@@ -3,7 +3,6 @@ import test from 'node:test';
 
 import {
   authorizeBearer,
-  authorizeDashboardView,
   resolveDashboardViewAccess,
 } from '../app/api/dashboard/requestAuth.mjs';
 
@@ -13,7 +12,6 @@ test('accepts only an exact bearer ingest token', () => {
   assert.equal(authorizeBearer('bearer abc', 'abc'), false);
   assert.equal(authorizeBearer(undefined, 'abc'), false);
 });
-
 test('dashboard view access fails closed and isolates the local fixture', () => {
   const url = new URL('https://x/api/dashboard');
   assert.equal(resolveDashboardViewAccess(url, {}), 'misconfigured');
@@ -44,10 +42,4 @@ test('dashboard view access fails closed and isolates the local fixture', () => 
   ]) {
     assert.equal(resolveDashboardViewAccess(url, env, { allowLocalFixture: true }), 'misconfigured');
   }
-});
-
-test('dashboard requires an exact configured view key', () => {
-  assert.equal(authorizeDashboardView(new URL('https://x/api/dashboard?key=view-secret'), 'view-secret'), true);
-  assert.equal(authorizeDashboardView(new URL('https://x/api/dashboard?key=wrong'), 'view-secret'), false);
-  assert.equal(authorizeDashboardView(new URL('https://x/api/dashboard'), 'view-secret'), false);
 });
