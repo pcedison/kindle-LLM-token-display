@@ -243,11 +243,11 @@ test('public docs explain authenticated remote settings and one-time Kindle migr
 test('settings editor requires a view key before presenting private URLs', () => {
   const page = readFileSync('app/page.js', 'utf8');
   const viewTokenInput =
-    page.match(/<input(?:(?!\/>)[\s\S])*id="view-token"(?:(?!\/>)[\s\S])*\/>/)?.[0] ?? '';
+    page.match(/<input\b(?=[^>]*\bid="view-token")[^>]*>/)?.[0] ?? '';
 
   assert.match(page, /View key \(required\)/);
   assert.doesNotMatch(page, /View key \(optional\)/);
-  assert.match(viewTokenInput, /\brequired\b/);
+  assert.match(viewTokenInput, /(?:^|\s)required(?=\s|\/?>)/);
   assert.match(page, /Enter the required view key to generate private Kindle URLs/i);
   assert.match(page, /Enter the required view key to load the authenticated preview/i);
 });
