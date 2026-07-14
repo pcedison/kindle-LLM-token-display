@@ -118,19 +118,39 @@ test('persistent rename contention preserves the destination and removes its tem
   }
 });
 
-test('collector lock prevents overlap and removes its owned lock', async () => {
+test('collector lock prevents overlap and removes its owned lock', { timeout: 5_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'collector-lock-'));
   let release;
+  let markStarted;
   const held = new Promise((resolve) => { release = resolve; });
-  const first = withCollectorLock({ stateRoot: root, action: () => held });
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  const first = withCollectorLock({
+    stateRoot: root,
+    action: () => {
+      markStarted();
+      return held;
+    },
+  });
 
-  const second = await withCollectorLock({ stateRoot: root, action: async () => 'must-not-run' });
-  assert.deepEqual(second, { skipped: true, reason: 'locked' });
-  release('finished');
-  assert.equal(await first, 'finished');
-  assert.deepEqual(await readdir(join(root, 'collector.lock.d')), []);
-  await rm(root, { recursive: true, force: true });
+  try {
+    await Promise.race([
+      started,
+      first.then(
+        () => assert.fail('first lock completed before its action started'),
+        (error) => { throw error; },
+      ),
+    ]);
+
+    const second = await withCollectorLock({ stateRoot: root, action: async () => 'must-not-run' });
+    assert.deepEqual(second, { skipped: true, reason: 'locked' });
+    release('finished');
+    assert.equal(await first, 'finished');
+    assert.deepEqual(await readdir(join(root, 'collector.lock.d')), []);
+  } finally {
+    release('finished');
+    await first.catch(() => {});
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('collector lock ignores a stale dead legacy claim without unlinking a reused path', async () => {
