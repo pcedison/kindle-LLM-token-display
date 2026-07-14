@@ -9,6 +9,10 @@ umask 077
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 URL=${REMOTE_CONFIG_URL:-}
+
+# shellcheck disable=SC1091
+. "$DIR/dashboard-utils.sh"
+
 TMP="/tmp/kindle-dash-device-config.$$"
 FIFO="${TMP}.pipe"
 GUARD_FILE="${TMP}.guard"
@@ -19,17 +23,12 @@ MAX_RESPONSE_BYTES=4096
 MAX_RESPONSE_BYTES_PLUS_ONE=4097
 DOWNLOAD_TIMEOUT_SECS=${REMOTE_CONFIG_TIMEOUT_SECS:-20}
 
-case "$DOWNLOAD_TIMEOUT_SECS" in
-  ''|*[!0-9]*) DOWNLOAD_TIMEOUT_SECS=20 ;;
-esac
-if [ "$DOWNLOAD_TIMEOUT_SECS" -lt 1 ] || [ "$DOWNLOAD_TIMEOUT_SECS" -gt 60 ]; then
+if ! DOWNLOAD_TIMEOUT_SECS=$(normalize_download_timeout "$DOWNLOAD_TIMEOUT_SECS"); then
   DOWNLOAD_TIMEOUT_SECS=20
 fi
 
 stop_download() {
   [ -n "$DOWNLOAD_PID" ] || return 0
-  kill "$DOWNLOAD_PID" >/dev/null 2>&1 || true
-  sleep 1
   kill -KILL "$DOWNLOAD_PID" >/dev/null 2>&1 || true
   wait "$DOWNLOAD_PID" >/dev/null 2>&1 || true
   DOWNLOAD_PID=''
@@ -44,7 +43,7 @@ stop_reader() {
 
 stop_watchdog() {
   [ -n "$WATCHDOG_PID" ] || return 0
-  kill -KILL "$WATCHDOG_PID" >/dev/null 2>&1 || true
+  kill "$WATCHDOG_PID" >/dev/null 2>&1 || true
   wait "$WATCHDOG_PID" >/dev/null 2>&1 || true
   WATCHDOG_PID=''
 }
@@ -85,22 +84,26 @@ start_download() {
 
 watch_download() {
   trap - EXIT HUP INT TERM
-  elapsed=0
-
-  while kill -0 "$DOWNLOAD_PID" >/dev/null 2>&1; do
-    if [ "$elapsed" -ge "$DOWNLOAD_TIMEOUT_SECS" ]; then
-      printf '%s\n' timeout >"$GUARD_FILE"
-      kill "$DOWNLOAD_PID" >/dev/null 2>&1 || true
-      kill "$READER_PID" >/dev/null 2>&1 || true
-      sleep 1
-      kill -KILL "$DOWNLOAD_PID" >/dev/null 2>&1 || true
-      kill -KILL "$READER_PID" >/dev/null 2>&1 || true
-      return 0
-    fi
-
-    sleep 1
-    elapsed=$((elapsed + 1))
-  done
+  watchdog_sleep_pid=''
+  watchdog_cancelled=false
+  cancel_watchdog() {
+    watchdog_cancelled=true
+    [ -n "$watchdog_sleep_pid" ] && kill -KILL "$watchdog_sleep_pid" >/dev/null 2>&1 || true
+  }
+  trap cancel_watchdog HUP INT TERM
+  sleep "$DOWNLOAD_TIMEOUT_SECS" &
+  watchdog_sleep_pid=$!
+  if [ "$watchdog_cancelled" = true ]; then
+    kill -KILL "$watchdog_sleep_pid" >/dev/null 2>&1 || true
+  fi
+  wait "$watchdog_sleep_pid" >/dev/null 2>&1
+  watchdog_sleep_status=$?
+  watchdog_sleep_pid=''
+  trap - HUP INT TERM
+  [ "$watchdog_cancelled" = false ] && [ "$watchdog_sleep_status" -eq 0 ] || exit 0
+  printf '%s\n' timeout >"$GUARD_FILE"
+  kill -KILL "$DOWNLOAD_PID" >/dev/null 2>&1 || true
+  kill -KILL "$READER_PID" >/dev/null 2>&1 || true
 }
 
 download_with_limits() {

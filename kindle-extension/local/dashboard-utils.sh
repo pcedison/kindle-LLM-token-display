@@ -13,6 +13,22 @@ normalize_battery_level() {
   printf '%s\n' "$value"
 }
 
+normalize_refresh_interval() {
+  case "$1" in
+    10|20|30|40|50|60|120|180|240|300|360|420|480|540|600|660|720|780|840|900)
+      printf '%s\n' "$1"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+normalize_download_timeout() {
+  case "$1" in
+    [1-9]|[1-5][0-9]|60) printf '%s\n' "$1" ;;
+    *) return 1 ;;
+  esac
+}
+
 append_query_param() {
   case "$1" in
     *\#*)

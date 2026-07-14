@@ -70,7 +70,7 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
-printf 'PNG' > "$out"
+cp docs/images/dashboard-dp75sdi.png "$out"
 printf '%s\\n' "$url" > "$CAPTURE"
 `,
   );
@@ -84,7 +84,10 @@ printf '%s\\n' "$url" > "$CAPTURE"
 
     assert.equal(result.status, 0, logs);
     assert.equal(readFileSync(capturePath, 'utf8').trim(), `${privateUrl}&battery=73`);
-    assert.equal(readFileSync(outputPath, 'utf8'), 'PNG');
+    assert.deepEqual(
+      readFileSync(outputPath),
+      readFileSync(join(process.cwd(), 'docs', 'images', 'dashboard-dp75sdi.png')),
+    );
     assert.match(logs, /fetch-dashboard: battery=73/);
     assert.doesNotMatch(logs, /TEST_VIEW_KEY_MUST_STAY_PRIVATE/);
     assert.doesNotMatch(logs, /https:\/\/example\.test\/api\?/);

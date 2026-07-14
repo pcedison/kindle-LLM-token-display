@@ -5,6 +5,7 @@ DEBUG=${DEBUG:-false}
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="$DIR/local/env.sh"
 DASH_PNG="$DIR/dash.png"
+DASH_CANDIDATE="${DASH_PNG}.candidate.$$"
 FETCH_DASHBOARD_CMD="$DIR/local/fetch-dashboard.sh"
 FETCH_REMOTE_CONFIG_CMD="$DIR/local/fetch-remote-config.sh"
 DISPLAY_ONCE_CMD="$DIR/local/display-once.sh"
@@ -29,10 +30,13 @@ if [ "$dash_xtrace_enabled" = true ]; then
 fi
 unset dash_xtrace_enabled
 
-refresh_interval_secs=${REFRESH_INTERVAL_SECS:-720}
-
 . "$DIR/local/dashboard-utils.sh"
 . "$DIR/local/chrome-control.sh"
+
+if ! refresh_interval_secs=$(normalize_refresh_interval "${REFRESH_INTERVAL_SECS:-720}"); then
+  echo "Invalid local refresh interval; using 720s."
+  refresh_interval_secs=720
+fi
 
 num_refresh=0
 ui_stopped=false
@@ -61,6 +65,7 @@ dashboard_cleanup() {
   fi
 
   dashboard_cleanup_started=true
+  rm -f "$DASH_CANDIDATE"
   restore_kindle_chrome
   lipc-set-prop com.lab126.powerd preventScreenSaver 0 >/dev/null 2>&1 || true
   stop_power_button_exit_watcher
@@ -124,6 +129,7 @@ stop_kindle_ui_once() {
 
 show_dashboard_png() {
   mode=${1:-partial}
+  image_path=${2:-$DASH_PNG}
   hide_kindle_chrome
 
   if [ "$mode" = full ]; then
@@ -134,20 +140,24 @@ show_dashboard_png() {
     else
       echo "Clear skipped"
     fi
-    /usr/sbin/eips -f -g "$DASH_PNG"
-    echo "Full screen refresh exit $?"
+    /usr/sbin/eips -f -g "$image_path"
+    display_status=$?
+    echo "Full screen refresh exit $display_status"
   else
     echo "Partial screen refresh"
-    /usr/sbin/eips -g "$DASH_PNG"
-    echo "Partial screen refresh exit $?"
+    /usr/sbin/eips -g "$image_path"
+    display_status=$?
+    echo "Partial screen refresh exit $display_status"
   fi
+  return "$display_status"
 }
 
 refresh_dashboard() {
   echo "Refreshing dashboard"
   "$DIR/wait-for-wifi.sh" "$WIFI_TEST_IP"
 
-  "$FETCH_DASHBOARD_CMD" "$DASH_PNG"
+  rm -f "$DASH_CANDIDATE"
+  "$FETCH_DASHBOARD_CMD" "$DASH_CANDIDATE"
   fetch_status=$?
 
   if [ "$fetch_status" -ne 0 ] && [ ! -s "$DASH_PNG" ]; then
@@ -163,9 +173,27 @@ refresh_dashboard() {
 
   if [ "$num_refresh" -ge "$FULL_DISPLAY_REFRESH_RATE" ] || [ "$num_refresh" -eq 0 ]; then
     num_refresh=0
-    show_dashboard_png full
+    display_mode=full
   else
-    show_dashboard_png partial
+    display_mode=partial
+  fi
+
+  if [ "$fetch_status" -eq 0 ]; then
+    if show_dashboard_png "$display_mode" "$DASH_CANDIDATE"; then
+      if ! mv -f "$DASH_CANDIDATE" "$DASH_PNG"; then
+        echo "Candidate display succeeded but cache promotion failed"
+        rm -f "$DASH_CANDIDATE"
+        return 1
+      fi
+    else
+      echo "Candidate image was rejected by eips; preserving cached dashboard"
+      rm -f "$DASH_CANDIDATE"
+      [ -s "$DASH_PNG" ] || return 1
+      show_dashboard_png "$display_mode" "$DASH_PNG" || return 1
+    fi
+  else
+    rm -f "$DASH_CANDIDATE"
+    show_dashboard_png "$display_mode" "$DASH_PNG" || return 1
   fi
 
   num_refresh=$((num_refresh + 1))
@@ -200,7 +228,7 @@ refresh_remote_config() {
 }
 
 sleep_until_next_refresh() {
-  duration=${1:-$REFRESH_INTERVAL_SECS}
+  duration=${1:-$refresh_interval_secs}
 
   if [ "$DASHBOARD_USE_RTC" != true ]; then
     echo "Sleeping in userspace for ${duration}s"
