@@ -179,12 +179,16 @@ test('environment example covers private live mode and dual-window fallback', ()
 test('public docs require fail-closed view protection and isolate local fixtures', () => {
   const envExample = readFileSync('.env.example', 'utf8');
   const readme = readFileSync('README.md', 'utf8');
+  const architecture = readFileSync('docs/ARCHITECTURE.md', 'utf8');
   const setup = readFileSync('docs/VERCEL-SETUP.md', 'utf8');
   const security = readFileSync('docs/SECURITY.md', 'utf8');
 
   assert.match(envExample, /DASHBOARD_VIEW_TOKEN=GENERATE_A_SEPARATE_LONG_RANDOM_SECRET/);
   assert.match(envExample, /# DASHBOARD_PUBLIC_FIXTURE=true/);
   assert.match(readme, /local-only unmanaged fixture/i);
+  assert.match(architecture, /same required view key as the PNG/);
+  assert.match(architecture, /required view-authenticated e-ink renderer/);
+  assert.doesNotMatch(architecture, /optional view(?: key|-authenticated)/i);
   assert.match(setup, /Production, Preview, and Development/i);
   assert.match(setup, /missing.*503/i);
   assert.match(security, /never.*implicitly.*public/i);
