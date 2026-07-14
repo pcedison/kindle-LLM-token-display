@@ -953,7 +953,12 @@ function Read-AllDeploymentPages {
         $nextProperties = @($pagination.PSObject.Properties | Where-Object Name -CEQ 'next')
         if (
             $countProperties.Count -ne 1 -or
-            $countProperties[0].Value -isnot [Int32] -or
+            (
+                $countProperties[0].Value -isnot [Int32] -and
+                $countProperties[0].Value -isnot [Int64]
+            ) -or
+            $countProperties[0].Value -lt 0 -or
+            $countProperties[0].Value -gt 100 -or
             $nextProperties.Count -ne 1
         ) {
             throw 'Deployment-list pagination does not contain exact count/next scalars'
@@ -2070,7 +2075,10 @@ $InMemoryCredentialMaterialCleared = $false
 $envDirectory = [IO.Path]::GetDirectoryName($envPath)
 
 $clearUsbCredentialMemory = {
-    foreach ($arrayName in @('randomBytes', 'originalBytes', 'backupBytes', 'newBytes', 'restoredBytes')) {
+    foreach ($arrayName in @(
+        'randomBytes', 'originalBytes', 'backupBytes', 'newBytes', 'restoredBytes',
+        'committedBytes', 'expectedBytes'
+    )) {
         $arrayVariable = Get-Variable -Name $arrayName -ErrorAction SilentlyContinue
         if ($arrayVariable -and $arrayVariable.Value -is [Array]) {
             [Array]::Clear($arrayVariable.Value, 0, $arrayVariable.Value.Length)
@@ -2078,13 +2086,14 @@ $clearUsbCredentialMemory = {
     }
     foreach ($privateName in @(
         'randomBytes', 'originalBytes', 'backupBytes', 'newBytes', 'restoredBytes',
+        'committedBytes', 'expectedBytes',
         'viewToken', 'encodedKey', 'dashboardUrl', 'configUrl',
         'dashboardLine', 'configLine', 'text', 'originalText',
         'beforeUnmanaged', 'afterUnmanaged', 'updated'
     )) {
         Set-Variable -Name $privateName -Value $null -ErrorAction SilentlyContinue
     }
-    Remove-Variable randomBytes, originalBytes, backupBytes, newBytes, restoredBytes, viewToken, encodedKey, dashboardUrl, configUrl, dashboardLine, configLine, text, originalText, beforeUnmanaged, afterUnmanaged, updated -ErrorAction SilentlyContinue
+    Remove-Variable randomBytes, originalBytes, backupBytes, newBytes, restoredBytes, committedBytes, expectedBytes, viewToken, encodedKey, dashboardUrl, configUrl, dashboardLine, configLine, text, originalText, beforeUnmanaged, afterUnmanaged, updated -ErrorAction SilentlyContinue
     $InMemoryCredentialMaterialCleared = $true
 }
 
@@ -2296,8 +2305,37 @@ $restoreUsbEnv = {
 }
 
 $rollbackRemovedAfterValidation = $false
+$committedBytes = $null
+$expectedBytes = $null
 try {
-    $updated = [IO.File]::ReadAllText($envPath)
+    try {
+        $committedBytes = [IO.File]::ReadAllBytes($envPath)
+        if (
+            $committedBytes.Length -ge 3 -and
+            $committedBytes[0] -eq 0xEF -and
+            $committedBytes[1] -eq 0xBB -and
+            $committedBytes[2] -eq 0xBF
+        ) { throw 'USB update readback contains a UTF-8 BOM' }
+        $expectedBytes = $utf8.GetBytes($text)
+        if (-not [Collections.StructuralComparisons]::StructuralEqualityComparer.Equals(
+            $committedBytes,
+            $expectedBytes
+        )) { throw 'USB update readback is not byte-identical to the intended private env' }
+        $updated = $utf8.GetString($committedBytes)
+        if (
+            [string]::IsNullOrEmpty($updated) -or
+            $updated.Contains("`r") -or
+            -not $updated.EndsWith("`n") -or
+            $updated.IndexOf([char]0) -ge 0
+        ) { throw 'USB update readback is not strict UTF-8 with LF-only lines and a final newline' }
+    } finally {
+        foreach ($privateBytes in @($committedBytes, $expectedBytes)) {
+            if ($privateBytes -is [Array]) { [Array]::Clear($privateBytes, 0, $privateBytes.Length) }
+        }
+        $committedBytes = $null
+        $expectedBytes = $null
+        Remove-Variable committedBytes, expectedBytes -ErrorAction SilentlyContinue
+    }
     $dashboardLine = [regex]::Match($updated, '(?m)^export DASHBOARD_URL="([^"]+)"$').Groups[1].Value
     $configLine = [regex]::Match($updated, '(?m)^export REMOTE_CONFIG_URL="([^"]+)"$').Groups[1].Value
 
@@ -2340,8 +2378,10 @@ try {
 }
 ```
 
-Expected: key counts are 1 and all validation booleans are true. Any validation,
-read, cleanup, or rollback error first attempts byte-identical restoration, then
+Expected: key counts are 1, all validation booleans are true, and the strict
+UTF-8/LF-only/final-newline FAT32 readback is byte-identical to the complete
+intended private env before rollback is removed. Any validation, read, cleanup,
+or rollback error first attempts byte-identical restoration, then
 uses the identity-bound global `.new`/`.failed`/`.rollback` inventory to prove
 zero residue. A disconnected/replaced volume, malformed/reparse inventory item,
 or copy that cannot be removed sets the residue and rotation blockers and can
@@ -2355,6 +2395,7 @@ Run:
 ```powershell
 $privateVariableNames = @(
     'randomBytes', 'originalBytes', 'backupBytes', 'newBytes', 'restoredBytes',
+    'committedBytes', 'expectedBytes',
     'viewToken', 'encodedKey', 'dashboardUrl', 'configUrl', 'dashboardLine',
     'configLine', 'text', 'originalText', 'beforeUnmanaged', 'afterUnmanaged', 'updated'
 )
