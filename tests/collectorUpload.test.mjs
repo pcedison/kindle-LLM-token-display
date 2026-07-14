@@ -13,6 +13,13 @@ const validSnapshot = () => ({
   providers: { claude: { collectedAt: '2026-07-10T00:00:00.000Z', windows: { fiveHour: { usedPercent: 1, resetsAt: 1783678200 } } } },
 });
 
+function validAcknowledgement(collectedAt = '2026-07-10T00:00:00.000Z') {
+  return new Response(JSON.stringify({ ok: true, collectedAt }), {
+    status: 200,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  });
+}
+
 async function withStateRoot(run) {
   const root = await mkdtemp(join(tmpdir(), 'quota-upload-'));
   const prior = process.env.KINDLE_LLM_DASH_STATE_ROOT;
@@ -104,7 +111,7 @@ test('uploads only bounded normalized JSON and never writes the token to state',
   await withStateRoot(async (root) => {
     const snapshot = { version: 1, collectedAt: '2026-07-10T00:00:00.000Z', providers: { claude: { collectedAt: '2026-07-09T23:00:00.000Z', windows: { fiveHour: { usedPercent: 1, resetsAt: 1783678200 } } } } };
     let request;
-    const result = await uploadSnapshot({ snapshot, ingestUrl: 'https://example.test/usage', ingestToken: 'secret-token', stateRoot: root, fetch: async (url, options) => { request = { url, options }; return new Response('ok', { status: 200 }); } });
+    const result = await uploadSnapshot({ snapshot, ingestUrl: 'https://example.test/usage', ingestToken: 'secret-token', stateRoot: root, fetch: async (url, options) => { request = { url, options }; return validAcknowledgement(); } });
     assert.equal(result.uploaded, true);
     assert.equal(request.options.headers.authorization, 'Bearer secret-token');
     assert.equal(JSON.parse(request.options.body).providers.claude.windows.fiveHour.usedPercent, 1);
@@ -126,8 +133,55 @@ test('rejects arbitrary and credential-like upload fields before request or stat
 test('keeps the abort timeout active while a response body stalls', async () => {
   await withStateRoot(async (root) => {
     const body = new ReadableStream({ pull() { return new Promise(() => {}); } });
-    await assert.rejects(() => uploadSnapshot({ snapshot: validSnapshot(), ingestUrl: 'https://example.test/usage', ingestToken: 'secret-token', stateRoot: root, timeoutMs: 20, fetch: async () => new Response(body, { status: 200 }) }), /Upload failed|timed out|aborted|AbortError/);
+    await assert.rejects(() => uploadSnapshot({ snapshot: validSnapshot(), ingestUrl: 'https://example.test/usage', ingestToken: 'secret-token', stateRoot: root, timeoutMs: 20, fetch: async () => new Response(body, { status: 200, headers: { 'content-type': 'application/json' } }) }), /Upload failed|timed out|aborted|AbortError/);
   });
+});
+
+test('persists success only after an exact status-200 JSON acknowledgement', async () => {
+  const invalidAcknowledgements = [
+    new Response(JSON.stringify({ ok: true, collectedAt: '2026-07-10T00:00:00.000Z' }), {
+      status: 201,
+      headers: { 'content-type': 'application/json' },
+    }),
+    new Response(JSON.stringify({ ok: true, collectedAt: '2026-07-10T00:00:00.000Z' }), {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    }),
+    new Response('not-json', { status: 200, headers: { 'content-type': 'application/json' } }),
+    new Response(JSON.stringify({ ok: false, collectedAt: '2026-07-10T00:00:00.000Z' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+    new Response(JSON.stringify({ ok: true, collectedAt: '2026-07-10T00:00:00.000Z', extra: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+    new Response(JSON.stringify({ ok: true, collectedAt: '2026-07-10T00:00:00Z' }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+    new Response(' '.repeat(4097), { status: 200, headers: { 'content-type': 'application/json' } }),
+  ];
+
+  for (const acknowledgement of invalidAcknowledgements) {
+    const root = await mkdtemp(join(tmpdir(), 'quota-upload-invalid-ack-'));
+    const retained = '{"retained":true}\n';
+    await writeFile(join(root, 'last-upload.json'), retained);
+    try {
+      await assert.rejects(() => uploadSnapshot({
+        snapshot: validSnapshot(),
+        ingestUrl: 'https://example.test/usage',
+        ingestToken: 'secret-token',
+        stateRoot: root,
+        now: () => Date.parse('2026-07-10T00:00:00.000Z'),
+        fetch: async () => acknowledgement,
+      }), /acknowledgement|response too large|rejected/i);
+      assert.equal(await readFile(join(root, 'last-upload.json'), 'utf8'), retained);
+      assert.equal(JSON.parse(await readFile(join(root, 'upload-backoff.json'), 'utf8')).delayMs, 300000);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
 });
 
 test('parallel uploads complete without a persistent filesystem lock', async () => {
@@ -135,7 +189,7 @@ test('parallel uploads complete without a persistent filesystem lock', async () 
     let requests = 0;
     const fetch = async () => {
       requests += 1;
-      return new Response('ok', { status: 200 });
+      return validAcknowledgement();
     };
     const options = {
       snapshot: validSnapshot(),
@@ -175,7 +229,7 @@ test('a delayed older upload cannot roll back last-upload state', async () => {
       stateRoot: root,
       fetch: async () => {
         await oldMayFinish;
-        return new Response('ok', { status: 200 });
+        return validAcknowledgement();
       },
     });
     await uploadSnapshot({
@@ -183,7 +237,7 @@ test('a delayed older upload cannot roll back last-upload state', async () => {
       ingestUrl: 'https://example.test/usage',
       ingestToken: 'secret-token',
       stateRoot: root,
-      fetch: async () => new Response('ok', { status: 200 }),
+      fetch: async () => validAcknowledgement(),
     });
     releaseOld();
     await oldUpload;
@@ -203,7 +257,7 @@ test('routes successful upload state through the atomic state writer', async () 
       ingestToken: 'secret-token',
       stateRoot: root,
       writeState: async (name, value) => writes.push({ name, value }),
-      fetch: async () => new Response('ok', { status: 200 }),
+      fetch: async () => validAcknowledgement(),
     });
 
     assert.deepEqual(writes.map(({ name }) => name), ['last-upload.json', 'upload-backoff.json']);
@@ -222,7 +276,7 @@ test('default atomic upload state honors the explicit state root', async () => {
       ingestUrl: 'https://example.test/usage',
       ingestToken: 'secret-token',
       stateRoot: root,
-      fetch: async () => new Response('ok', { status: 200 }),
+      fetch: async () => validAcknowledgement(),
     });
 
     assert.equal(JSON.parse(await readFile(join(root, 'last-upload.json'), 'utf8')).version, 2);
@@ -262,7 +316,7 @@ test('uses a safe per-user default config location', () => {
 test('resolves the project-owned macOS Keychain secret without mutating config', async () => {
   const config = {
     ingestTokenSource: 'macos-keychain',
-    keychainService: 'KindleLLMDashboard.ingest',
+    keychainService: 'KindleLLMDashboard.ingest.v2',
     keychainAccount: 'fixture-user',
   };
   let invocation;
@@ -275,9 +329,34 @@ test('resolves the project-owned macOS Keychain secret without mutating config',
   });
 
   assert.equal(token, 'fixture-secret');
-  assert.deepEqual(invocation, [
-    '/usr/bin/security',
-    ['find-generic-password', '-w', '-s', 'KindleLLMDashboard.ingest', '-a', 'fixture-user'],
+  assert.equal(invocation[0], '/usr/bin/osascript');
+  assert.deepEqual(invocation[1].slice(0, 2), ['-l', 'JavaScript']);
+  assert.match(invocation[1][2], /macos-keychain\.js$/);
+  assert.deepEqual(invocation[1].slice(3), [
+    'read',
+    'KindleLLMDashboard.ingest.v2',
+    'fixture-user',
   ]);
+  assert.doesNotMatch(invocation.flat(Infinity).join(' '), /fixture-secret/);
   assert.equal(Object.hasOwn(config, 'ingestToken'), false);
+});
+
+test('bounds the macOS Keychain helper output after removing osascript framing', async () => {
+  const config = {
+    ingestTokenSource: 'macos-keychain',
+    keychainService: 'KindleLLMDashboard.ingest.v2',
+    keychainAccount: 'fixture-user',
+  };
+  for (const terminator of ['\n', '\r\n']) {
+    const exact = await resolveIngestToken(config, {
+      platform: 'darwin',
+      execFile: async () => ({ stdout: `${'x'.repeat(16384)}${terminator}` }),
+    });
+    assert.equal(exact.length, 16384);
+  }
+
+  await assert.rejects(() => resolveIngestToken(config, {
+    platform: 'darwin',
+    execFile: async () => ({ stdout: `${'x'.repeat(16385)}\n` }),
+  }), /credential is unavailable/i);
 });

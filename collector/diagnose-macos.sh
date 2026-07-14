@@ -3,9 +3,13 @@ set -u
 
 owner='kindle-llm-dash/macos-collector'
 label='com.kindle-llm-dashboard.sync'
+legacy_keychain_service='KindleLLMDashboard.ingest'
 security_bin=${KINDLE_LLM_SECURITY_BIN:-/usr/bin/security}
 launchctl_bin=${KINDLE_LLM_LAUNCHCTL_BIN:-/bin/launchctl}
+osascript_bin=${KINDLE_LLM_OSASCRIPT_BIN:-/usr/bin/osascript}
 node_bin=${KINDLE_LLM_NODE_BIN:-$(command -v node || true)}
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+keychain_helper="$script_dir/lib/macos-keychain.js"
 install_root="$HOME/Library/Application Support/KindleLLMDashboard"
 manifest_path="$install_root/install-manifest.json"
 config_path="$install_root/config.json"
@@ -34,8 +38,14 @@ if (m.schemaVersion !== 1 || m.owner !== process.argv[2]) process.exit(1);
     manifest_valid=true
     service=$("$node_bin" -e 'const m=require(process.argv[1]); process.stdout.write(m.keychainService || "")' "$manifest_path" 2>/dev/null || true)
     account=$("$node_bin" -e 'const m=require(process.argv[1]); process.stdout.write(m.keychainAccount || "")' "$manifest_path" 2>/dev/null || true)
-    if [ -n "$service" ] && "$security_bin" find-generic-password -s "$service" -a "$account" >/dev/null 2>&1; then
-      keychain_present=true
+    if [ -n "$service" ] && [ -n "$account" ]; then
+      if [ "$service" = "$legacy_keychain_service" ] && \
+        "$security_bin" find-generic-password -s "$service" -a "$account" >/dev/null 2>&1; then
+        keychain_present=true
+      elif [ "$service" != "$legacy_keychain_service" ] && [ -f "$keychain_helper" ] && \
+        "$osascript_bin" -l JavaScript "$keychain_helper" exists "$service" "$account" >/dev/null 2>&1; then
+        keychain_present=true
+      fi
     fi
     if [ -f "$settings_path" ] && "$node_bin" -e '
 const fs=require("fs");

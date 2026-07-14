@@ -44,6 +44,7 @@ test('rejects an unauthorized ingest without writing or logging credentials', as
   );
 
   assert.equal(response.status, 401);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
   assert.equal(writes, 0);
   assert.equal(await response.text(), 'Unauthorized');
   assert.deepEqual(logs, []);
@@ -154,6 +155,8 @@ test('writes a valid normalized snapshot and returns its collection timestamp on
   );
 
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.match(response.headers.get('content-type') || '', /^application\/json\b/i);
   assert.deepEqual(await response.json(), {
     ok: true,
     collectedAt: '2026-07-10T09:30:00.000Z',

@@ -1,15 +1,29 @@
 #!/bin/sh
 set -eu
+set +x
 
 owner='kindle-llm-dash/macos-collector'
 label='com.kindle-llm-dashboard.sync'
-keychain_service='KindleLLMDashboard.ingest'
+keychain_service='KindleLLMDashboard.ingest.v2'
+legacy_keychain_service='KindleLLMDashboard.ingest'
 security_bin=${KINDLE_LLM_SECURITY_BIN:-/usr/bin/security}
 launchctl_bin=${KINDLE_LLM_LAUNCHCTL_BIN:-/bin/launchctl}
 plutil_bin=${KINDLE_LLM_PLUTIL_BIN:-/usr/bin/plutil}
+osascript_bin=${KINDLE_LLM_OSASCRIPT_BIN:-/usr/bin/osascript}
 node_bin=${KINDLE_LLM_NODE_BIN:-$(command -v node || true)}
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 project_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+keychain_helper="$script_dir/lib/macos-keychain.js"
+
+tty_echo_disabled=0
+restore_tty() {
+  if [ "$tty_echo_disabled" -eq 1 ]; then
+    stty echo 2>/dev/null || true
+    tty_echo_disabled=0
+  fi
+}
+trap restore_tty EXIT
+trap 'exit 1' HUP INT TERM
 
 ingest_url=''
 codex_command='codex'
@@ -38,6 +52,8 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$node_bin" ] || { printf '%s\n' 'Node.js 20.9 or newer is required' >&2; exit 1; }
+[ -x "$osascript_bin" ] || { printf '%s\n' 'osascript is required' >&2; exit 1; }
+[ -f "$keychain_helper" ] || { printf '%s\n' 'Keychain helper is missing' >&2; exit 1; }
 [ -n "$ingest_url" ] || { printf '%s\n' 'The --ingest-url option is required' >&2; exit 1; }
 "$node_bin" -e '
 const url = new URL(process.argv[1]);
@@ -61,6 +77,7 @@ lib/claudeStatus.mjs
 lib/codexRateLimits.mjs
 lib/collectorConfig.mjs
 lib/collectorLock.mjs
+lib/macos-keychain.js
 lib/collectorSecret.mjs
 lib/localState.mjs
 lib/paths.mjs
@@ -122,20 +139,45 @@ if [ -f "$launch_agent_path" ]; then
 fi
 
 printf '%s' 'Dashboard ingest token: ' >&2
+read_bounded_token() {
+  "$node_bin" -e '
+const fs = require("fs");
+const maximum = 16384;
+const buffer = Buffer.alloc(maximum + 2);
+let length = 0;
+let newline = -1;
+while (length < buffer.length && newline < 0) {
+  const count = fs.readSync(0, buffer, length, buffer.length - length, null);
+  if (count === 0) break;
+  length += count;
+  newline = buffer.subarray(0, length).indexOf(10);
+}
+if (newline >= 0) length = newline;
+if (length > 0 && buffer[length - 1] === 13) length -= 1;
+if (length > maximum) process.exit(2);
+if (length === 0) process.exit(3);
+process.stdout.write(buffer.subarray(0, length));
+'
+}
 if [ -t 0 ]; then
+  tty_echo_disabled=1
   stty -echo
-  IFS= read -r ingest_token || ingest_token=''
-  stty echo
+  ingest_token=$(read_bounded_token) || ingest_token=''
+  restore_tty
   printf '\n' >&2
 else
-  IFS= read -r ingest_token || ingest_token=''
+  ingest_token=$(read_bounded_token) || ingest_token=''
 fi
 [ -n "$ingest_token" ] || { printf '%s\n' 'Dashboard ingest token is required' >&2; exit 1; }
 
 old_keychain_token=''
 old_keychain_present=0
-if old_keychain_token=$("$security_bin" find-generic-password -w -s "$keychain_service" -a "$keychain_account" 2>/dev/null); then
+if old_keychain_token=$("$osascript_bin" -l JavaScript "$keychain_helper" read "$keychain_service" "$keychain_account" 2>/dev/null); then
   old_keychain_present=1
+fi
+legacy_keychain_present=0
+if "$security_bin" find-generic-password -s "$legacy_keychain_service" -a "$keychain_account" >/dev/null 2>&1; then
+  legacy_keychain_present=1
 fi
 
 settings_existed=0
@@ -146,34 +188,62 @@ backup_created=0
 keychain_changed=0
 success=0
 
+write_keychain_token() {
+  printf '%s' "$1" | "$osascript_bin" -l JavaScript "$keychain_helper" write "$keychain_service" "$keychain_account" >/dev/null
+}
+
+delete_keychain_token() {
+  "$osascript_bin" -l JavaScript "$keychain_helper" delete "$keychain_service" "$keychain_account" >/dev/null
+}
+
 cleanup() {
   exit_code=$?
+  set +e
+  restore_tty
+  rollback_failed=0
+  restore_agent=0
   if [ "$success" -ne 1 ]; then
     "$launchctl_bin" bootout "gui/$(id -u)" "$launch_agent_path" >/dev/null 2>&1 || true
-    if [ -n "$plist_backup" ] && [ -f "$plist_backup" ]; then
-      mv -f "$plist_backup" "$launch_agent_path"
-      "$launchctl_bin" bootstrap "gui/$(id -u)" "$launch_agent_path" >/dev/null 2>&1 || true
-    else
-      rm -f "$launch_agent_path"
-    fi
-    if [ -n "$settings_rollback" ] && [ -f "$settings_rollback" ]; then
-      mkdir -p "$(dirname "$settings_path")"
-      mv -f "$settings_rollback" "$settings_path"
-    elif [ "$settings_existed" -eq 0 ]; then
-      rm -f "$settings_path"
-    fi
-    rm -rf "$install_root"
-    if [ -n "$install_backup" ] && [ -d "$install_backup" ]; then
-      mv "$install_backup" "$install_root"
-    fi
     if [ "$keychain_changed" -eq 1 ]; then
       if [ "$old_keychain_present" -eq 1 ]; then
-        "$security_bin" add-generic-password -U -s "$keychain_service" -a "$keychain_account" -w "$old_keychain_token" >/dev/null 2>&1 || true
+        if ! write_keychain_token "$old_keychain_token" >/dev/null 2>&1; then
+          rollback_failed=1
+        fi
       else
-        "$security_bin" delete-generic-password -s "$keychain_service" -a "$keychain_account" >/dev/null 2>&1 || true
+        if ! delete_keychain_token >/dev/null 2>&1; then
+          rollback_failed=1
+        fi
       fi
     fi
-    if [ "$backup_created" -eq 1 ] && [ -n "$backup_path" ]; then rm -f "$backup_path"; fi
+    if ! rm -rf "$install_root"; then rollback_failed=1; fi
+    if [ -n "$install_backup" ] && [ -d "$install_backup" ]; then
+      if ! mv "$install_backup" "$install_root"; then rollback_failed=1; fi
+    fi
+    if [ -n "$settings_rollback" ] && [ -f "$settings_rollback" ]; then
+      if ! mkdir -p "$(dirname "$settings_path")"; then rollback_failed=1; fi
+      if ! mv -f "$settings_rollback" "$settings_path"; then rollback_failed=1; fi
+    elif [ "$settings_existed" -eq 0 ]; then
+      if ! rm -f "$settings_path"; then rollback_failed=1; fi
+    fi
+    if [ -n "$plist_backup" ] && [ -f "$plist_backup" ]; then
+      if mv -f "$plist_backup" "$launch_agent_path"; then
+        restore_agent=1
+      else
+        rollback_failed=1
+      fi
+    elif ! rm -f "$launch_agent_path"; then
+      rollback_failed=1
+    fi
+    if [ "$backup_created" -eq 1 ] && [ -n "$backup_path" ] && ! rm -f "$backup_path"; then
+      rollback_failed=1
+    fi
+    if [ "$restore_agent" -eq 1 ] && [ "$rollback_failed" -eq 0 ] && \
+      ! "$launchctl_bin" bootstrap "gui/$(id -u)" "$launch_agent_path" >/dev/null 2>&1; then
+      rollback_failed=1
+    fi
+    if [ "$rollback_failed" -eq 1 ]; then
+      printf '%s\n' 'Installer rollback incomplete' >&2
+    fi
   fi
   ingest_token=''
   old_keychain_token=''
@@ -202,8 +272,16 @@ if [ -f "$launch_agent_path" ]; then
   cp "$launch_agent_path" "$plist_backup"
 fi
 
-"$security_bin" add-generic-password -U -s "$keychain_service" -a "$keychain_account" -w "$ingest_token" >/dev/null
 keychain_changed=1
+write_keychain_token "$ingest_token"
+verified_keychain_token=''
+if ! verified_keychain_token=$("$osascript_bin" -l JavaScript "$keychain_helper" read "$keychain_service" "$keychain_account" 2>/dev/null) \
+  || [ "$verified_keychain_token" != "$ingest_token" ]; then
+  verified_keychain_token=''
+  printf '%s\n' 'Keychain verification failed' >&2
+  exit 1
+fi
+verified_keychain_token=''
 
 mkdir -p "$collector_root" "$install_root/app/api/dashboard" "$launch_agent_dir" "$(dirname "$settings_path")"
 printf '%s\n' "$required_runtime_files" | while IFS= read -r runtime_file; do
@@ -301,8 +379,14 @@ chmod 600 "$manifest_path"
 "$launchctl_bin" bootout "gui/$(id -u)" "$launch_agent_path" >/dev/null 2>&1 || true
 "$launchctl_bin" bootstrap "gui/$(id -u)" "$launch_agent_path" >/dev/null
 
-if [ -n "$install_backup" ]; then rm -rf "$install_backup"; fi
-if [ -n "$settings_rollback" ]; then rm -f "$settings_rollback"; fi
-if [ -n "$plist_backup" ]; then rm -f "$plist_backup"; fi
 success=1
+if [ "$legacy_keychain_present" -eq 1 ] && \
+  ! "$security_bin" delete-generic-password -s "$legacy_keychain_service" -a "$keychain_account" >/dev/null 2>&1; then
+  success=0
+  printf '%s\n' 'Legacy Keychain migration failed' >&2
+  exit 1
+fi
+if [ -n "$install_backup" ]; then rm -rf "$install_backup" || true; fi
+if [ -n "$settings_rollback" ]; then rm -f "$settings_rollback" || true; fi
+if [ -n "$plist_backup" ]; then rm -f "$plist_backup" || true; fi
 printf '%s\n' '{"installed":true}'

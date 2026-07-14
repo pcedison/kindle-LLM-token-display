@@ -40,6 +40,34 @@ test('normalizes only exact Kindle battery values', () => {
   }
 });
 
+test('accepts only bounded refresh intervals used by the dashboard daemon', () => {
+  for (const value of ['10', '50', '60', '720', '900']) {
+    assert.equal(runShell(`normalize_refresh_interval '${value}'`), value);
+  }
+  for (const value of ['', '0', '-1', '9', '11', '61', '901', 'abc', '10.5']) {
+    assert.equal(
+      runShell(`normalize_refresh_interval '${value}'`, { allowFailure: true }).status,
+      1,
+    );
+  }
+
+  const dash = readFileSync(join(process.cwd(), 'kindle-extension', 'dash.sh'), 'utf8');
+  assert.match(dash, /normalize_refresh_interval "\$\{REFRESH_INTERVAL_SECS:-720\}"/);
+  assert.match(dash, /duration=\$\{1:-\$refresh_interval_secs\}/);
+});
+
+test('accepts only bounded integer download deadlines', () => {
+  for (const value of ['1', '9', '10', '20', '59', '60']) {
+    assert.equal(runShell(`normalize_download_timeout '${value}'`), value);
+  }
+  for (const value of ['', '0', '01', '1.5', '61', '-1', 'abc', '999999999999999999999999999999999999']) {
+    assert.equal(
+      runShell(`normalize_download_timeout '${value}'`, { allowFailure: true }).status,
+      1,
+    );
+  }
+});
+
 test('appends the battery query parameter before an optional fragment', () => {
   assert.equal(
     runShell("append_query_param 'https://example.test/api' battery 72"),
@@ -191,7 +219,7 @@ test('uses the first valid battery source and forwards it without logging the co
   writeFileSync(join(directory, 'gasgauge-info'), '#!/usr/bin/env sh\nprintf \'73%%\\n\'\n');
   writeFileSync(
     join(directory, 'wget'),
-    '#!/usr/bin/env sh\nprintf \'PNG\' > "$3"\nprintf \'%s\\n\' "$4" > "$CAPTURE"\n',
+    '#!/usr/bin/env sh\ncp docs/images/dashboard-dp75sdi.png "$3"\nprintf \'%s\\n\' "$4" > "$CAPTURE"\n',
   );
 
   try {
@@ -209,7 +237,10 @@ test('uses the first valid battery source and forwards it without logging the co
 
     assert.equal(result.status, 0, result.stderr);
     assert.equal(readFileSync(capture, 'utf8').trim(), 'https://example.test/api?token=private&battery=73');
-    assert.equal(readFileSync(output, 'utf8'), 'PNG');
+    assert.deepEqual(
+      readFileSync(output),
+      readFileSync(join(process.cwd(), 'docs', 'images', 'dashboard-dp75sdi.png')),
+    );
     assert.match(result.stdout, /battery=73/);
     assert.doesNotMatch(result.stdout, /https:\/\/example\.test\/api\?token=private/);
   } finally {
@@ -714,10 +745,25 @@ test('dashboard daemon refreshes remote settings before PNG and sleeps with the 
 
   assert.match(env, /REMOTE_CONFIG_URL=/);
   assert.match(dash, /local\/fetch-remote-config\.sh/);
-  assert.match(dash, /refresh_interval_secs=\$\{REFRESH_INTERVAL_SECS:-720\}/);
   assert.ok(mainBody.indexOf('refresh_remote_config') < mainBody.indexOf('refresh_dashboard'));
   assert.match(mainBody, /sleep_until_next_refresh "\$refresh_interval_secs"/);
   assert.doesNotMatch(mainBody, /sleep 5/);
+});
+
+test('production refresh paths promote a candidate only after eips succeeds', () => {
+  const dash = readFileSync(join(process.cwd(), 'kindle-extension', 'dash.sh'), 'utf8');
+  const refreshNow = readFileSync(join(process.cwd(), 'kindle-extension', 'refresh-now.sh'), 'utf8');
+  const displayOnce = readFileSync(
+    join(process.cwd(), 'kindle-extension', 'local', 'display-once.sh'),
+    'utf8',
+  );
+
+  assert.match(dash, /FETCH_DASHBOARD_CMD[^\n]+DASH_CANDIDATE/);
+  assert.match(dash, /show_dashboard_png[^\n]+DASH_CANDIDATE/);
+  assert.ok(dash.indexOf('show_dashboard_png "$display_mode" "$DASH_CANDIDATE"') < dash.indexOf('mv -f "$DASH_CANDIDATE" "$DASH_PNG"'));
+  assert.match(refreshNow, /promote-dashboard-candidate\.sh/);
+  assert.match(refreshNow, /fetch-dashboard\.sh" "\$DASH_CANDIDATE"/);
+  assert.match(displayOnce, /exit "\$display_status"/);
 });
 
 test('diagnostics inspect standard Wario RTC interfaces without writing them', () => {

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "node --test",
+    "verify": "npm test && npm run build",
     "dev": "next dev",
     "build": "next build",
     "start": "next start"

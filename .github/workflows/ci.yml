@@ -43,6 +43,8 @@ jobs:
       - run: npm ci
       - name: Validate macOS collector shell syntax
         run: bash -n collector/install-macos.sh collector/diagnose-macos.sh collector/uninstall-macos.sh
+      - name: Compile macOS Keychain helper
+        run: osacompile -l JavaScript -o "$RUNNER_TEMP/keychain-helper.scpt" collector/lib/macos-keychain.js
       - run: npm test
       - run: npm run build
 

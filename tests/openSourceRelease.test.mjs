@@ -36,42 +36,6 @@ const publicTextFiles = trackedFiles.filter((path) => {
     || path.startsWith('kindle-extension/');
 });
 
-function assertCoverageBaselineSchema(baseline) {
-  assert.deepEqual(
-    Object.keys(baseline).sort(),
-    ['head', 'node', 'tests', 'lines', 'branches', 'functions'].sort(),
-  );
-  assert.equal(typeof baseline.head, 'string');
-  assert.ok(baseline.head.length > 0);
-  assert.equal(typeof baseline.node, 'string');
-  assert.ok(baseline.node.length > 0);
-  assert.ok(Number.isInteger(baseline.tests));
-  assert.ok(baseline.tests >= 226);
-  for (const metric of ['lines', 'branches', 'functions']) {
-    assert.ok(Number.isFinite(baseline[metric]));
-    assert.ok(baseline[metric] >= 0 && baseline[metric] <= 100);
-  }
-}
-
-test('hardening coverage baseline has the approved exact schema and ranges', () => {
-  const baseline = JSON.parse(read('docs/audits/hardening-coverage-baseline.json'));
-  assertCoverageBaselineSchema(baseline);
-
-  const { functions: _omitted, ...missingKey } = baseline;
-  for (const invalid of [
-    missingKey,
-    { ...baseline, extra: true },
-    { ...baseline, head: '' },
-    { ...baseline, node: '' },
-    { ...baseline, tests: 225 },
-    { ...baseline, lines: -0.01 },
-    { ...baseline, branches: 100.01 },
-    { ...baseline, functions: Number.NaN },
-  ]) {
-    assert.throws(() => assertCoverageBaselineSchema(invalid));
-  }
-});
-
 test('ships an MIT license and public documentation set', () => {
   const license = read('LICENSE');
   assert.match(license, /MIT License/);

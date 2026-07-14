@@ -1,5 +1,9 @@
 # Required View Key UI Contract
 
+> **Historical / completed:** PR #22 implemented this contract. Any fixed test
+> count or coverage baseline below is historical; current gates are defined by
+> `PROJECT_STATUS.md` and `docs/SCOPE-RESET.md`.
+
 ## Context
 
 Production View Protection makes `/api/dashboard` and `/api/device-config`

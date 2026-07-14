@@ -1,4 +1,11 @@
-# macOS Collector
+# macOS Collector (Beta)
+
+This path remains **Beta** until the installer, rollback, LaunchAgent, and
+uninstall flow complete a real-Mac acceptance run. Automated tests cover the
+portable logic. The Keychain helper receives the token through bounded standard
+input rather than a command-line argument; collector reads use the same helper
+identity so the default Keychain ACL does not cross from `osascript` to a
+different reader.
 
 ## Prerequisites
 
@@ -12,7 +19,12 @@ From the repository root:
 ./collector/install-macos.sh --ingest-url 'https://your-project.vercel.app/api/usage'
 ```
 
-The installer prompts for `DASHBOARD_INGEST_TOKEN`, stores it as the `KindleLLMDashboard.ingest` generic password in the current user's Keychain, and never writes it to config, the LaunchAgent, or the ownership manifest. Runtime files live under `~/Library/Application Support/KindleLLMDashboard`.
+The installer prompts for `DASHBOARD_INGEST_TOKEN`, stores it as the
+`KindleLLMDashboard.ingest.v2` generic password in the current user's Keychain,
+and never writes it to config, the LaunchAgent, or the ownership manifest. A
+successful upgrade removes the legacy `KindleLLMDashboard.ingest` item only
+after the v2 item has been written and read back through the helper. Runtime
+files live under `~/Library/Application Support/KindleLLMDashboard`.
 
 The per-user `com.kindle-llm-dashboard.sync` LaunchAgent runs once at login and every 720 seconds while the user session is awake. It does not keep the Mac awake and does not run as a server. Claude status-line events launch a separate bounded one-shot upload without querying Codex.
 

@@ -8,6 +8,7 @@ export WIFI_TEST_IP=${WIFI_TEST_IP:-1.1.1.1}
 
 export DASHBOARD_URL=${DASHBOARD_URL:-"https://your-project.vercel.app/api/dashboard?profile=dp75sdi&managed=true"}
 export REMOTE_CONFIG_URL=${REMOTE_CONFIG_URL:-"https://your-project.vercel.app/api/device-config?profile=dp75sdi"}
+export DASHBOARD_DOWNLOAD_TIMEOUT_SECS=${DASHBOARD_DOWNLOAD_TIMEOUT_SECS:-20}
 
 export REFRESH_INTERVAL_SECS=${REFRESH_INTERVAL_SECS:-720}
 export FULL_DISPLAY_REFRESH_RATE=${FULL_DISPLAY_REFRESH_RATE:-1}

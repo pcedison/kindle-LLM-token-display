@@ -41,4 +41,6 @@ fi
 
 echo "$(date) display-once: drawing $DASH_PNG" >>"$LOG_FILE"
 /usr/sbin/eips -f -g "$DASH_PNG" >>"$LOG_FILE" 2>&1
-echo "$(date) display-once: draw exit $?" >>"$LOG_FILE"
+display_status=$?
+echo "$(date) display-once: draw exit $display_status" >>"$LOG_FILE"
+exit "$display_status"
