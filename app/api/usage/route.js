@@ -3,11 +3,18 @@ import { normalizeQuotaSnapshot } from '../dashboard/quotaSnapshot.mjs';
 import { writeMergedQuotaSnapshot } from '../dashboard/quotaStore.mjs';
 
 const MAX_BODY_BYTES = 8192;
+const NO_STORE = 'no-store';
 
 export const runtime = 'nodejs';
 
 function response(body, status) {
-  return new Response(body, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  return new Response(body, {
+    status,
+    headers: {
+      'Cache-Control': NO_STORE,
+      'Content-Type': 'text/plain; charset=utf-8',
+    },
+  });
 }
 
 function logStorageError(logger, error) {
@@ -90,7 +97,10 @@ export async function handleUsageIngest(request, dependencies = {}) {
 
   try {
     const merged = await write(snapshot, dependencies.store ? { store: dependencies.store } : undefined);
-    return Response.json({ ok: true, collectedAt: merged.collectedAt });
+    return Response.json(
+      { ok: true, collectedAt: merged.collectedAt },
+      { headers: { 'Cache-Control': NO_STORE } },
+    );
   } catch (error) {
     logStorageError(logger, error);
     return response('Storage unavailable', 503);

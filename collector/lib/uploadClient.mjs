@@ -7,6 +7,7 @@ import { writeJsonStateAtomic } from './localState.mjs';
 
 const PROVIDER_NAMES = ['claude', 'codex'];
 const WINDOW_NAMES = ['fiveHour', 'sevenDay'];
+const MAX_ACKNOWLEDGEMENT_BYTES = 4096;
 const stateWriteQueues = new Map();
 
 function isoTimestamp(value) {
@@ -42,6 +43,74 @@ function normalizeUploadSnapshot(snapshot) {
 function nowMilliseconds(now) {
   const value = Number(typeof now === 'function' ? now() : now);
   return Number.isFinite(value) ? value : Date.now();
+}
+
+async function readBoundedAcknowledgement(response) {
+  if (!response.body?.getReader) {
+    throw new Error('Upload acknowledgement rejected');
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_ACKNOWLEDGEMENT_BYTES) {
+        Promise.resolve(reader.cancel()).catch(() => {});
+        throw new Error('Upload response too large');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error('Upload acknowledgement rejected');
+  }
+}
+
+function assertAcknowledgementHeaders(response) {
+  const mediaType = response.headers?.get?.('content-type')?.split(';', 1)[0].trim().toLowerCase();
+  if (response.status !== 200 || mediaType !== 'application/json') {
+    throw new Error('Upload acknowledgement rejected');
+  }
+}
+
+function assertExactAcknowledgement(text) {
+  let acknowledgement;
+  try {
+    acknowledgement = JSON.parse(text);
+  } catch {
+    throw new Error('Upload acknowledgement rejected');
+  }
+  const keys = acknowledgement && !Array.isArray(acknowledgement)
+    ? Object.keys(acknowledgement).sort()
+    : [];
+  const collectedAt = acknowledgement?.collectedAt;
+  const collectedAtDate = typeof collectedAt === 'string' ? new Date(collectedAt) : null;
+  if (
+    keys.length !== 2
+    || keys[0] !== 'collectedAt'
+    || keys[1] !== 'ok'
+    || acknowledgement.ok !== true
+    || !collectedAtDate
+    || Number.isNaN(collectedAtDate.getTime())
+    || collectedAtDate.toISOString() !== collectedAt
+  ) {
+    throw new Error('Upload acknowledgement rejected');
+  }
 }
 
 function snapshotFromProviders(providers, fallbackCollectedAt) {
@@ -170,26 +239,12 @@ export async function uploadSnapshot({
     } catch {
       throw new Error('Upload failed');
     }
-    if (!response.ok) throw new Error('Upload rejected');
-    if (response.body?.getReader) {
-      const reader = response.body.getReader();
-      let total = 0;
-      await Promise.race([(async () => {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          total += value.byteLength;
-          if (total > 4096) {
-            await reader.cancel();
-            throw new Error('Upload response too large');
-          }
-        }
-      })(), timeoutPromise]);
-    } else {
-      await Promise.race([response.text().then((text) => {
-        if (text.length > 4096) throw new Error('Upload response too large');
-      }), timeoutPromise]);
-    }
+    assertAcknowledgementHeaders(response);
+    const acknowledgement = await Promise.race([
+      readBoundedAcknowledgement(response),
+      timeoutPromise,
+    ]);
+    assertExactAcknowledgement(acknowledgement);
     await persistLatestUpload({ normalized, persistState, stateRoot });
     await persistState('upload-backoff.json', { delayMs: 0 });
     return { uploaded: true };
