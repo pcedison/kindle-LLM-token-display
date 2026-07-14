@@ -36,6 +36,42 @@ const publicTextFiles = trackedFiles.filter((path) => {
     || path.startsWith('kindle-extension/');
 });
 
+function assertCoverageBaselineSchema(baseline) {
+  assert.deepEqual(
+    Object.keys(baseline).sort(),
+    ['head', 'node', 'tests', 'lines', 'branches', 'functions'].sort(),
+  );
+  assert.equal(typeof baseline.head, 'string');
+  assert.ok(baseline.head.length > 0);
+  assert.equal(typeof baseline.node, 'string');
+  assert.ok(baseline.node.length > 0);
+  assert.ok(Number.isInteger(baseline.tests));
+  assert.ok(baseline.tests >= 226);
+  for (const metric of ['lines', 'branches', 'functions']) {
+    assert.ok(Number.isFinite(baseline[metric]));
+    assert.ok(baseline[metric] >= 0 && baseline[metric] <= 100);
+  }
+}
+
+test('hardening coverage baseline has the approved exact schema and ranges', () => {
+  const baseline = JSON.parse(read('docs/audits/hardening-coverage-baseline.json'));
+  assertCoverageBaselineSchema(baseline);
+
+  const { functions: _omitted, ...missingKey } = baseline;
+  for (const invalid of [
+    missingKey,
+    { ...baseline, extra: true },
+    { ...baseline, head: '' },
+    { ...baseline, node: '' },
+    { ...baseline, tests: 225 },
+    { ...baseline, lines: -0.01 },
+    { ...baseline, branches: 100.01 },
+    { ...baseline, functions: Number.NaN },
+  ]) {
+    assert.throws(() => assertCoverageBaselineSchema(invalid));
+  }
+});
+
 test('ships an MIT license and public documentation set', () => {
   const license = read('LICENSE');
   assert.match(license, /MIT License/);
@@ -140,6 +176,25 @@ test('environment example covers private live mode and dual-window fallback', ()
   ]) assert.match(env, new RegExp(`^${name}=`, 'm'), name);
 });
 
+test('public docs require fail-closed view protection and isolate local fixtures', () => {
+  const envExample = readFileSync('.env.example', 'utf8');
+  const readme = readFileSync('README.md', 'utf8');
+  const architecture = readFileSync('docs/ARCHITECTURE.md', 'utf8');
+  const setup = readFileSync('docs/VERCEL-SETUP.md', 'utf8');
+  const security = readFileSync('docs/SECURITY.md', 'utf8');
+
+  assert.match(envExample, /DASHBOARD_VIEW_TOKEN=GENERATE_A_SEPARATE_LONG_RANDOM_SECRET/);
+  assert.match(envExample, /# DASHBOARD_PUBLIC_FIXTURE=true/);
+  assert.match(readme, /local-only unmanaged fixture/i);
+  assert.match(architecture, /same required view key as the PNG/);
+  assert.match(architecture, /required view-authenticated e-ink renderer/);
+  assert.doesNotMatch(architecture, /optional view(?: key|-authenticated)/i);
+  assert.match(setup, /Production, Preview, and Development/i);
+  assert.match(setup, /missing.*503/i);
+  assert.match(security, /never.*implicitly.*public/i);
+  assert.doesNotMatch(readme, /https:\/\/[^/\s]+\.vercel\.app/);
+});
+
 test('README links setup, security, architecture, collector, RTC, and preview', () => {
   const readme = read('README.md');
   const windowsCollector = read('docs/WINDOWS-COLLECTOR.md');
@@ -187,4 +242,16 @@ test('public docs explain authenticated remote settings and one-time Kindle migr
   assert.match(readme, /both[\s\S]{0,80}view token/i);
   assert.match(security, /Kindle receives[\s\S]{0,160}device configuration/i);
   assert.match(security, /Private Blob stores[\s\S]{0,160}managed display configuration/i);
+});
+
+test('settings editor requires a view key before presenting private URLs', () => {
+  const page = readFileSync('app/page.js', 'utf8');
+  const viewTokenInput =
+    page.match(/<input\b(?=(?:(?!\/>)[\s\S])*\bid="view-token")(?:(?!\/>)[\s\S])*\/>/)?.[0] ?? '';
+
+  assert.match(page, /View key \(required\)/);
+  assert.doesNotMatch(page, /View key \(optional\)/);
+  assert.match(viewTokenInput, /(?:^|\r?\n)[ \t]*required[ \t]*(?=\r?\n|\/>)/);
+  assert.match(page, /Enter the required view key to generate private Kindle URLs/i);
+  assert.match(page, /Enter the required view key to load the authenticated preview/i);
 });

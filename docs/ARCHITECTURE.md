@@ -18,7 +18,7 @@ artwork data URLs, the refresh interval, version, profile, and update time.
 URLs remain compatible and do not read it.
 
 The Kindle separately requests `/api/device-config?profile=<profile>` using the
-same optional view key as the PNG. Its cache-disabled text response contains
+same required view key as the PNG. Its cache-disabled text response contains
 only `version` and `refresh_interval_seconds`. The Kindle never sources this
 response as shell: it extracts one decimal value, checks the exact allowlist,
 and otherwise retains its last in-memory or local fallback interval.
@@ -38,7 +38,7 @@ Equal timestamps are idempotent. Incoming data wins only for the same window whe
 ## Components
 
 - `app/api/usage`: bounded bearer-authenticated ingest and conflict-safe Blob merge.
-- `app/api/dashboard`: optional view-authenticated e-ink renderer.
+- `app/api/dashboard`: required view-authenticated e-ink renderer.
 - `collector/lib`: shared parsing, local state, lock, secret resolution, Codex RPC, and upload logic.
 - `collector/*-windows.ps1`: reversible Windows per-user integration.
 - `collector/*-macos.sh`: reversible macOS Application Support, Keychain, and LaunchAgent integration.

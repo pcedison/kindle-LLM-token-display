@@ -210,17 +210,17 @@ export function formatRefreshOption(seconds) {
 }
 
 export function buildManagedUrls({ origin, profile, viewToken }) {
+  const requiredViewToken = typeof viewToken === 'string' ? viewToken.trim() : '';
+  if (!requiredViewToken) return null;
+
   const dashboardUrl = new URL('/api/dashboard', origin);
   dashboardUrl.searchParams.set('profile', profile);
   dashboardUrl.searchParams.set('managed', 'true');
+  dashboardUrl.searchParams.set('key', requiredViewToken);
 
   const deviceConfigUrl = new URL('/api/device-config', origin);
   deviceConfigUrl.searchParams.set('profile', profile);
-
-  if (viewToken) {
-    dashboardUrl.searchParams.set('key', viewToken);
-    deviceConfigUrl.searchParams.set('key', viewToken);
-  }
+  deviceConfigUrl.searchParams.set('key', requiredViewToken);
 
   return {
     dashboardUrl: dashboardUrl.toString(),

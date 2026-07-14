@@ -472,17 +472,21 @@ export default function ConfigPage() {
             <fieldset className="settings-band urls-band">
               <legend>Managed URLs</legend>
               <div className="field-group view-token-field">
-                <label htmlFor="view-token">View key (optional)</label>
+                <label htmlFor="view-token">View key (required)</label>
                 <input
                   id="view-token"
                   type="password"
                   value={viewToken}
                   onChange={(event) => setViewToken(event.target.value)}
                   autoComplete="off"
+                  required
                   aria-invalid={previewFailed}
-                  aria-describedby={previewFailed ? 'preview-error' : undefined}
+                  aria-describedby={previewFailed ? 'view-token-help preview-error' : 'view-token-help'}
                   placeholder="DASHBOARD_VIEW_TOKEN"
                 />
+                <p id="view-token-help" className="band-note">
+                  Enter the required view key to generate private Kindle URLs.
+                </p>
               </div>
               {managedUrls ? (
                 <div className="url-list">
@@ -505,7 +509,7 @@ export default function ConfigPage() {
                     </a>
                   </div>
                 </div>
-              ) : <p className="band-note">Preparing deployment URLs...</p>}
+              ) : null}
             </fieldset>
 
             <section className="preview-band" aria-labelledby="preview-title">
@@ -526,7 +530,11 @@ export default function ConfigPage() {
                     onError={() => setPreviewFailed(true)}
                   />
                 </div>
-              ) : null}
+              ) : (
+                <p className="band-note">
+                  Enter the required view key to load the authenticated preview.
+                </p>
+              )}
               {previewFailed ? (
                 <p
                   id="preview-error"

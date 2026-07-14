@@ -10,15 +10,16 @@ A low-power, portrait e-ink dashboard for Claude Code and Codex subscription quo
 
 The renderer, signed ingest, shared collector, and reversible Windows and macOS installers are implemented and covered by automated tests. Production deployment and real-device acceptance are environment-specific final steps; do not call a fork production-ready until those checks pass.
 
-## Demo Mode
+## View Protection and Local Fixture
 
-Deploy the repository to Vercel, set optional manual values from `.env.example`, and open:
+All Vercel environments require DASHBOARD_VIEW_TOKEN. Missing configuration returns 503; a missing or wrong request key returns 401. Public fixture rendering is local-only, explicit, unmanaged, and disconnected from Blob, managed configuration, device configuration, and live quota state.
 
-```text
-https://your-project.vercel.app/api/dashboard?profile=dp75sdi&claude=true&openai=true&gemini=false&battery=82
-```
-
-Manual values are display fixtures only. They are useful before local collection is installed, but they are not live subscription data.
+For local artwork and layout checks, leave `DASHBOARD_VIEW_TOKEN` unset, set
+`DASHBOARD_PUBLIC_FIXTURE=true`, and run `next dev`. This local-only unmanaged fixture
+can render the manual display values from `.env.example`, but it cannot
+use `managed=true`, Blob, live quota state, or `/api/device-config`. Combining
+fixture mode with Vercel, production mode, or a configured view token is a
+conflict and returns 503.
 
 ## Private Live Mode
 
@@ -33,7 +34,10 @@ Vercel stores the latest sanitized snapshot and keeps rendering it while every e
 
 Cross-device usage is eventually consistent. Codex mobile or cloud usage is corrected by the next 12-minute desktop poll while an enrolled computer is awake. Claude mobile usage is corrected after the next Claude Code response on an enrolled desktop because that official response is what refreshes Claude's status-line limits.
 
-Set up private Vercel Blob, `DASHBOARD_INGEST_TOKEN`, and optional `DASHBOARD_VIEW_TOKEN` by following [Vercel setup](docs/VERCEL-SETUP.md). The data flow and schema are in [Architecture](docs/ARCHITECTURE.md), and the trust boundaries are in [Security](docs/SECURITY.md).
+Set up private Vercel Blob, `DASHBOARD_INGEST_TOKEN`, and required
+`DASHBOARD_VIEW_TOKEN` by following [Vercel setup](docs/VERCEL-SETUP.md). The
+data flow and schema are in [Architecture](docs/ARCHITECTURE.md), and the trust
+boundaries are in [Security](docs/SECURITY.md).
 
 ## Windows Collector
 
@@ -46,8 +50,11 @@ Prerequisites:
 Install from PowerShell:
 
 ```powershell
-.\collector\install-windows.ps1 -IngestUrl 'https://your-project.vercel.app/api/usage'
+.\collector\install-windows.ps1 -IngestUrl '<DEPLOYMENT_ORIGIN>/api/usage'
 ```
+
+Use the deployment origin reported by `vercel inspect`; do not save an
+owner-specific deployment host in tracked files.
 
 The installer prompts for the ingest token as a SecureString, stores runtime configuration under `%LOCALAPPDATA%\KindleLLMDashboard` with restricted ACLs, registers Claude's status line, and creates a per-user `Kindle LLM Quota Uploader-<GUID>` task. It runs at login and every 12 minutes while awake, catches up after resume, never wakes the computer, and rejects overlapping runs. The protected manifest retains that generated name across reinstalls. It refuses to replace a foreign Claude status line unless `-ReplaceExistingStatusLine` is supplied.
 
@@ -65,7 +72,7 @@ See [Windows collector](docs/WINDOWS-COLLECTOR.md) for installation, recovery, t
 Install from Terminal after signing in to the official clients:
 
 ```sh
-./collector/install-macos.sh --ingest-url 'https://your-project.vercel.app/api/usage'
+./collector/install-macos.sh --ingest-url '<DEPLOYMENT_ORIGIN>/api/usage'
 ```
 
 The ingest token is stored in the current user's Keychain. A per-user LaunchAgent runs at login and every 720 seconds while awake without keeping the Mac running. Diagnose or remove it with `./collector/diagnose-macos.sh` and `./collector/uninstall-macos.sh`. See [macOS collector](docs/MACOS-COLLECTOR.md) for ownership, recovery, and Keychain details.
@@ -82,18 +89,18 @@ Supported profiles:
 | `basic` | `600x800` | Kindle Basic |
 
 Copy `kindle-extension` to `<KINDLE_DRIVE>:\extensions\kindle-dash`, then edit
-`local/env.sh` and replace the generic hostname in both managed URLs. Keep the
-12-minute local fallback:
+`local/env.sh` and replace `<DEPLOYMENT_ORIGIN>` with the origin reported by
+`vercel inspect`. Keep the 12-minute local fallback:
 
 ```sh
-export DASHBOARD_URL="https://your-project.vercel.app/api/dashboard?profile=dp75sdi&managed=true"
-export REMOTE_CONFIG_URL="https://your-project.vercel.app/api/device-config?profile=dp75sdi"
+export DASHBOARD_URL="<DEPLOYMENT_ORIGIN>/api/dashboard?profile=dp75sdi&managed=true"
+export REMOTE_CONFIG_URL="<DEPLOYMENT_ORIGIN>/api/device-config?profile=dp75sdi"
 export REFRESH_INTERVAL_SECS=720
 ```
 
-If view protection is enabled, append `&key=YOUR_VIEW_TOKEN` to
-`DASHBOARD_URL` and `&key=YOUR_VIEW_TOKEN` to `REMOTE_CONFIG_URL`. Both
-endpoints use the same view token. Never commit that edited device file.
+Both URLs use the same view token. On Vercel, append it as the required `key`
+query parameter to `DASHBOARD_URL` and `REMOTE_CONFIG_URL`. Never commit that
+edited device file.
 
 Safely eject the Kindle and use KUAL in this order:
 
@@ -108,19 +115,20 @@ The proven DP75SDI path keeps the Kindle framework running and does not clear th
 ## Remote Dashboard Settings
 
 Open the deployment root, choose a Kindle profile, and unlock the editor with
-`DASHBOARD_ADMIN_TOKEN`. The editor controls provider visibility, separate
-Claude Code and Codex artwork, and the Kindle refresh interval. Source artwork
-may be PNG, JPEG, or WebP up to 5 MiB; the browser places it on white and
-contain-fits it to an opaque `104 x 96` PNG without cropping or stretching.
+`DASHBOARD_ADMIN_TOKEN`. The root editor shell may load anonymously, but it
+does not read or expose private configuration, artwork, Blob state, quota data,
+or tokens until the admin-authorized configuration request succeeds. The editor
+controls provider visibility, separate Claude Code and Codex artwork, and the
+Kindle refresh interval. Source artwork may be PNG, JPEG, or WebP up to 5 MiB;
+the browser places it on white and contain-fits it to an opaque `104 x 96` PNG
+without cropping or stretching.
 
 The refresh menu allows 10-50 seconds as explicit high-power test settings and
 every whole minute from 1-15 minutes. Twelve minutes remains the recommended
 continuous-display setting. Save creates a profile-scoped private configuration
-and previews this managed PNG URL:
-
-```text
-https://your-project.vercel.app/api/dashboard?profile=dp75sdi&managed=true
-```
+and previews the authenticated managed PNG at the deployment origin. Obtain the
+current origin with `vercel inspect`; tracked documentation does not embed a
+deployment host.
 
 Remote management needs a one-time USB migration of the Kindle extension and
 its stable managed URLs. After that migration, changing artwork, providers, or

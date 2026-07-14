@@ -1,14 +1,21 @@
 # Project Status: Remote Kindle Dashboard Settings
 
-更新時間：2026-07-13（Asia/Taipei）
+更新時間：2026-07-14（Asia/Taipei）
 
 ## 結論
 
-遠端 Dashboard 設定功能已完成開發、測試、獨立 review、PR merge、Vercel
-production 部署與 DP75SDI Kindle 一次性檔案遷移。專案目前可公開作為 MIT
-授權的開源專案，但仍應描述為「tested profiles production-capable」，不是零設定
-託管服務。每位使用者仍須自行準備 Kindle 越獄環境、Vercel 專案、官方客戶端登入
-與真機驗收。
+2026-07-13 完成的遠端 Dashboard 設定功能與證據保留在下方，作為可驗證的歷史
+紀錄。Production View Protection PR1 仍在施工；最終 local gate、GitHub CI/PR、
+Vercel deployment SHA/READY、production smoke 與 Kindle post-deploy acceptance
+證據均待收集。PR1 完成前，不得以歷史 deployment 或測試結果宣稱新保護已部署。
+
+## Production View Protection PR1 狀態
+
+- implementation：in progress
+- final local and GitHub test evidence：pending
+- Vercel preview/production deployment evidence：pending
+- authenticated production and Kindle acceptance evidence：pending
+- 本檔不保存 deployment host；需要時以 `vercel inspect` 動態取得 origin。
 
 ## Canonical Source
 
@@ -18,7 +25,7 @@ branch: main
 feature merge PR: https://github.com/pcedison/kindle-LLM-token-display/pull/16
 feature baseline SHA: 2b44aa6e4d7205facea4f480dcb0c45afa09adf3
 handoff PR: https://github.com/pcedison/kindle-LLM-token-display/pull/17
-production URL: https://kindle-llm-dash-1.vercel.app
+production origin: resolve dynamically with vercel inspect (not tracked)
 ```
 
 `main` SHA 與 production deployment ID 會在每次文件或程式 merge 後改變，因此不在
@@ -26,7 +33,7 @@ production URL: https://kindle-llm-dash-1.vercel.app
 `READY`，且 `githubCommitSha` 與當時 GitHub/local `main` 完全相同。後續 Agent 必須
 重新動態查詢，不應把 feature baseline SHA 當成目前 `main`。
 
-## 本輪已完成
+## Historical Remote Settings Baseline（2026-07-13，pre-PR1）
 
 ### Vercel 設定編輯器
 
@@ -54,7 +61,8 @@ version=1
 refresh_interval_seconds=<allowlisted value>
 ```
 
-- Dashboard PNG 與 device-config 共用 optional `DASHBOARD_VIEW_TOKEN`。
+- 當時 Dashboard PNG 與 device-config 共用 optional `DASHBOARD_VIEW_TOKEN`；
+  此為 pre-PR1 歷史契約。
 - device-config 是 `text/plain`、`no-store`，不含圖片、provider、quota 或 secret。
 
 ### Kindle Runtime
@@ -70,9 +78,10 @@ refresh_interval_seconds=<allowlisted value>
 - 原有 chrome hide/restore、power-button exit、RTC opt-in、full refresh 與 cached PNG
   行為維持不變。
 
-## Vercel Environment 狀態
+## Historical Vercel Environment 狀態（2026-07-13，pre-PR1）
 
-以下僅記錄是否存在，不記錄任何值：
+以下僅保留交接當時是否存在的歷史紀錄，不代表目前 deployment 狀態，也不得作為
+PR1 deployment evidence：
 
 ```text
 BLOB_READ_WRITE_TOKEN: present
@@ -81,17 +90,17 @@ DASHBOARD_ADMIN_TOKEN: present in Production, Preview, Development
 DASHBOARD_VIEW_TOKEN: not configured
 ```
 
-本輪產生的新 admin token 已透過 stdin 寫入 Vercel，沒有出現在 command line、
-Git 或對話輸出。完成部署時同一值已放入 Windows clipboard。Clipboard 是暫時的；
-若值遺失，請在 Vercel 旋轉 `DASHBOARD_ADMIN_TOKEN` 並重新部署，不要嘗試從
-Vercel 讀回 sensitive value。
+2026-07-13 handoff 曾透過 stdin provision admin token，值未記錄於本檔。該次
+clipboard 狀態不是現行憑證來源，也不得用於 PR1；新的 rotation、deployment 與
+驗證證據仍為 pending。
 
-## Production Smoke Test
+## Historical Production Smoke Test（2026-07-13，pre-PR1）
+
+以下是 PR1 之前的可驗證歷史結果，不證明 Production View Protection 已部署：
 
 ```text
 GET /: 200, admin field present
 GET /api/config without Bearer: 401
-GET /api/config with current admin token: 200
 GET /api/device-config?profile=dp75sdi: 200
 device config content type: text/plain; charset=utf-8
 device config lines: exactly 2
@@ -105,7 +114,9 @@ managed PNG color type: 0 (grayscale)
 managed PNG interlace: 0
 ```
 
-## Test 與 Review 證據
+## Historical Test 與 Review 證據（2026-07-13，pre-PR1）
+
+以下結果屬於先前功能基線；PR1 的最終 local/GitHub/Vercel gate 仍為 pending：
 
 ```text
 npm.cmd test: 226 passed, 0 failed
@@ -144,7 +155,7 @@ label: Kindle
 filesystem: FAT32
 extension root: D:\extensions\kindle-dash
 profile: dp75sdi
-production host: kindle-llm-dash-1.vercel.app
+production origin: omitted from tracked status; resolve with `vercel inspect`
 ```
 
 備份：
@@ -171,15 +182,20 @@ REMOTE_CONFIG_URL -> /api/device-config?profile=dp75sdi
 既有 profile、RTC、低功耗與 optional view key 狀態均保留。`env.sh` shell syntax
 通過，兩個 URL 各只有一行，新 helper 在掛載檔案系統上可執行。
 
-D: 保存的兩個 URL 已直接對 production 驗證：device-config 回傳 720，並已下載
-有效 `758 x 1024` grayscale PNG 到 `dash.png` cache；舊 cache 同時備份。
+D: 保存的兩個 URL 在 2026-07-13 pre-PR1 handoff 曾留下 device-config 720 與
+`758 x 1024` grayscale PNG cache 紀錄；這只是歷史資料，不是現行 production 或
+PR1 acceptance evidence。
 
-## 使用者現在要做
+## PR1 release gates 完成前禁止執行的 handoff actions
 
-1. 在 Windows 使用「安全移除硬體」退出 Kindle，再拔除 USB。
-2. 開啟 <https://kindle-llm-dash-1.vercel.app>。
+下列流程只保留為歷史 handoff 參考。PR1 尚未完成 merge、deployment SHA/READY、
+environment、authenticated smoke 與 Kindle acceptance evidence 前，不得執行：
+
+1. release gate 明確放行後，才安全退出 Kindle USB。
+2. 確認 deployed PR1 SHA 與 READY 狀態後，才以 `vercel inspect` 取得 origin。
 3. Profile 選擇 `DP75SDI / Paperwhite 2`。
-4. 在「管理密碼」欄貼上目前 clipboard 內容並按 `Unlock`。
+4. 僅使用 PR1 維護窗口新 provision 或 rotation 的 admin credential 解鎖；不得重用
+   2026-07-13 clipboard 狀態。
 5. 分別為 Claude artwork 與 Codex artwork 上傳圖片；兩張可不同。
 6. 選擇刷新頻率；長期使用建議 12 分鐘。
 7. 按 `Save Settings`，等待 `Saved` 與完整 PNG preview 更新。
@@ -187,13 +203,14 @@ D: 保存的兩個 URL 已直接對 production 驗證：device-config 回傳 720
 9. 下一輪 Wi-Fi refresh 會自動取得圖片、provider visibility 與 interval，之後修改
    網頁設定不再需要 USB。
 
-## 尚待使用者驗收
+## PR1 release 後尚待使用者驗收
 
 - 尚未由使用者上傳最終 Claude/Codex 自訂圖片並按 Save。
 - 尚未在拔線後由真機完成第一次新 runtime Wi-Fi refresh。
 - 尚未實際觀察使用者選定 interval 的兩個連續週期。
 - 尚未由使用者確認長期運作時背面溫度與耗電；12 分鐘應作為基準。
-- 若 clipboard admin token 已被其他複製操作覆蓋，需要旋轉 token。
+- PR1 admin credential 的 provision/rotation 與安全交付證據尚待建立；不得依賴
+  2026-07-13 clipboard 狀態。
 
 ## 刻意未實作
 

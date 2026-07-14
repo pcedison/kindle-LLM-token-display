@@ -21,9 +21,23 @@ another role.
 
 - `DASHBOARD_ADMIN_TOKEN` is accepted only as an exact Bearer token by
   `/api/config`. The browser keeps it in React memory and clears it on Lock.
-- `DASHBOARD_VIEW_TOKEN` optionally protects both `/api/dashboard` and
-  `/api/device-config` through the private Kindle query URL.
+  The root editor shell may load anonymously, but it does not read or expose
+  private configuration, artwork, Blob state, quota data, or tokens before a
+  successful admin-authorized request.
+- `DASHBOARD_VIEW_TOKEN` is required in every Vercel environment and protects
+  both `/api/dashboard` and `/api/device-config` through the private Kindle
+  query URL.
 - `DASHBOARD_INGEST_TOKEN` authorizes sanitized quota uploads only.
+
+Missing view-token configuration never makes a deployment implicitly public:
+dashboard and device-configuration requests return 503 before storage access.
+When the token is configured, a missing or wrong request key returns 401 before
+storage access.
+
+`DASHBOARD_PUBLIC_FIXTURE=true` is limited to explicit local `next dev` use
+without Vercel, production mode, or a view token. The local-only unmanaged
+fixture cannot use managed mode, Blob, live quota state, or device
+configuration. Conflicting states fail closed with 503.
 
 Uploaded artwork is untrusted input. The browser accepts PNG, JPEG, or WebP,
 normalizes it to an opaque `104 x 96` PNG, and the server independently checks

@@ -145,7 +145,7 @@ function liveSnapshot(overrides = {}) {
 
 async function renderFixture({
   snapshot = null,
-  env = {},
+  env = { DASHBOARD_VIEW_TOKEN: 'fixture-view-token' },
   query = '',
   readDashboardConfig,
   resolvePikachuSrc = () => PIKACHU_DATA_URL,
@@ -157,7 +157,10 @@ async function renderFixture({
     readDashboardConfig,
     resolvePikachuSrc,
   });
-  const response = await handler(new Request(`https://dashboard.test/api/dashboard?${query}`));
+  const url = new URL('https://dashboard.test/api/dashboard');
+  for (const [key, value] of new URLSearchParams(query)) url.searchParams.append(key, value);
+  if (env.DASHBOARD_VIEW_TOKEN) url.searchParams.set('key', env.DASHBOARD_VIEW_TOKEN);
+  const response = await handler(new Request(url));
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('content-type'), 'image/png');
   assert.match(response.headers.get('cache-control') || '', /no-store/);
@@ -238,6 +241,37 @@ test('view authorization runs before quota storage access', async () => {
   const response = await handler(new Request('https://dashboard.test/api/dashboard?key=wrong'));
   assert.equal(response.status, 401);
   assert.equal(reads, 0);
+});
+
+test('missing view configuration returns no-store 503 before quota storage', async () => {
+  let reads = 0;
+  const handler = createDashboardHandler({
+    env: {},
+    readQuotaSnapshot: async () => { reads += 1; return liveSnapshot(); },
+  });
+  const response = await handler(new Request('https://dashboard.test/api/dashboard'));
+  assert.equal(response.status, 503);
+  assert.equal(reads, 0);
+  assert.match(response.headers.get('cache-control') || '', /no-store/);
+});
+
+test('local fixture renders unmanaged manual data without private reads', async () => {
+  let quotaReads = 0;
+  let configReads = 0;
+  const handler = createDashboardHandler({
+    env: { DASHBOARD_PUBLIC_FIXTURE: 'true', NODE_ENV: 'test' },
+    readQuotaSnapshot: async () => { quotaReads += 1; throw new Error('private quota read'); },
+    readDashboardConfig: async () => { configReads += 1; throw new Error('private config read'); },
+  });
+  const response = await handler(new Request('https://dashboard.test/api/dashboard?profile=dp75sdi'));
+  assert.equal(response.status, 200);
+  assert.equal(quotaReads, 0);
+  assert.equal(configReads, 0);
+
+  const managed = await handler(new Request('https://dashboard.test/api/dashboard?managed=true'));
+  assert.equal(managed.status, 503);
+  assert.equal(quotaReads, 0);
+  assert.equal(configReads, 0);
 });
 
 test('unmanaged query rendering remains unchanged and never reads dashboard config', async () => {
@@ -464,21 +498,28 @@ test('dashboard route consumes two-window provider cards and renders a valid Kin
   const port = await reservePort();
   const origin = `http://127.0.0.1:${port}`;
   let serverOutput = '';
-  const child = spawn(process.execPath, [nextBin, 'dev', '--hostname', '127.0.0.1', '--port', String(port)], {
+  const integrationEnvironment = {
+    ...process.env,
+    BLOB_READ_WRITE_TOKEN: '',
+    DASHBOARD_VIEW_TOKEN: 'fixture-view-token',
+    CLAUDE_FIVE_HOUR_REMAINING: '100%',
+    CLAUDE_FIVE_HOUR_RESET_LABEL: 'RESET COMPLETE',
+    CLAUDE_SEVEN_DAY_REMAINING: '81%',
+    CLAUDE_SEVEN_DAY_RESET_LABEL: 'RESET 07/17 07:00',
+    OPENAI_FIVE_HOUR_REMAINING: '96%',
+    OPENAI_FIVE_HOUR_RESET_LABEL: 'RESET 19:10',
+    OPENAI_SEVEN_DAY_REMAINING: '89%',
+    OPENAI_SEVEN_DAY_RESET_LABEL: 'RESET 07/17 07:00',
+  };
+  const nextCommand = process.env.KINDLE_LLM_NEXT_INTEGRATION_MODE === 'start' ? 'start' : 'dev';
+  const child = spawn(process.execPath, [
+    nextBin,
+    nextCommand,
+    '--hostname', '127.0.0.1',
+    '--port', String(port),
+  ], {
     cwd: process.cwd(),
-    env: {
-      ...process.env,
-      BLOB_READ_WRITE_TOKEN: '',
-      DASHBOARD_VIEW_TOKEN: 'fixture-view-token',
-      CLAUDE_FIVE_HOUR_REMAINING: '100%',
-      CLAUDE_FIVE_HOUR_RESET_LABEL: 'RESET COMPLETE',
-      CLAUDE_SEVEN_DAY_REMAINING: '81%',
-      CLAUDE_SEVEN_DAY_RESET_LABEL: 'RESET 07/17 07:00',
-      OPENAI_FIVE_HOUR_REMAINING: '96%',
-      OPENAI_FIVE_HOUR_RESET_LABEL: 'RESET 19:10',
-      OPENAI_SEVEN_DAY_REMAINING: '89%',
-      OPENAI_SEVEN_DAY_RESET_LABEL: 'RESET 07/17 07:00',
-    },
+    env: integrationEnvironment,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout.on('data', (chunk) => { serverOutput += chunk; });

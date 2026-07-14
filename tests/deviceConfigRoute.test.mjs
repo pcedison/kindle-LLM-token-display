@@ -37,23 +37,27 @@ test('view authorization runs before dashboard config reads', async () => {
   assert.match(response.headers.get('cache-control') || '', /no-store/);
 });
 
-test('allows public access when no dashboard view token is configured', async () => {
-  const handler = createDeviceConfigHandler({
-    env: {},
-    readDashboardConfig: async () => storedConfig(),
-  });
-
-  const response = await handler(
-    new Request('https://dashboard.test/api/device-config?profile=dp75sdi'),
-  );
-
-  assert.equal(response.status, 200);
+test('device config fails closed without a view token or under fixture mode', async () => {
+  for (const env of [
+    {},
+    { DASHBOARD_PUBLIC_FIXTURE: 'true', NODE_ENV: 'test' },
+  ]) {
+    let reads = 0;
+    const handler = createDeviceConfigHandler({
+      env,
+      readDashboardConfig: async () => { reads += 1; return storedConfig(); },
+    });
+    const response = await handler(new Request('https://dashboard.test/api/device-config'));
+    assert.equal(response.status, 503);
+    assert.equal(reads, 0);
+    assert.match(response.headers.get('cache-control') || '', /no-store/);
+  }
 });
 
 test('resolves the requested profile before reading its normalized config', async () => {
   const profiles = [];
   const handler = createDeviceConfigHandler({
-    env: {},
+    env: { DASHBOARD_VIEW_TOKEN: 'fixture-view-token' },
     readDashboardConfig: async (profile) => {
       profiles.push(profile);
       return storedConfig({ profile, refreshIntervalSeconds: 300 });
@@ -61,7 +65,7 @@ test('resolves the requested profile before reading its normalized config', asyn
   });
 
   const response = await handler(
-    new Request('https://dashboard.test/api/device-config?profile=paperwhite3&w=600&h=800'),
+    new Request('https://dashboard.test/api/device-config?profile=paperwhite3&w=600&h=800&key=fixture-view-token'),
   );
 
   assert.equal(response.status, 200);
