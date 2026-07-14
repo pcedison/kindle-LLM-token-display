@@ -3,9 +3,13 @@ set -eu
 
 owner='kindle-llm-dash/macos-collector'
 label='com.kindle-llm-dashboard.sync'
+legacy_keychain_service='KindleLLMDashboard.ingest'
 security_bin=${KINDLE_LLM_SECURITY_BIN:-/usr/bin/security}
 launchctl_bin=${KINDLE_LLM_LAUNCHCTL_BIN:-/bin/launchctl}
+osascript_bin=${KINDLE_LLM_OSASCRIPT_BIN:-/usr/bin/osascript}
 node_bin=${KINDLE_LLM_NODE_BIN:-$(command -v node || true)}
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+keychain_helper="$script_dir/lib/macos-keychain.js"
 install_root="$HOME/Library/Application Support/KindleLLMDashboard"
 manifest_path="$install_root/install-manifest.json"
 launch_agent_path="$HOME/Library/LaunchAgents/$label.plist"
@@ -16,6 +20,8 @@ if [ ! -e "$install_root" ] && [ ! -e "$launch_agent_path" ]; then
   exit 0
 fi
 [ -n "$node_bin" ] || { printf '%s\n' 'Node.js is required for safe removal' >&2; exit 1; }
+[ -x "$osascript_bin" ] || { printf '%s\n' 'osascript is required for safe removal' >&2; exit 1; }
+[ -f "$keychain_helper" ] || { printf '%s\n' 'Keychain helper is required for safe removal' >&2; exit 1; }
 [ -f "$manifest_path" ] || { printf '%s\n' 'Installation manifest is missing; refusing unsafe removal' >&2; exit 1; }
 
 "$node_bin" -e '
@@ -65,7 +71,15 @@ if (settings?.statusLine?.command === ownedCommand) {
 fi
 
 if [ -n "$keychain_service" ]; then
-  "$security_bin" delete-generic-password -s "$keychain_service" -a "$keychain_account" >/dev/null 2>&1 || true
+  if [ "$keychain_service" = "$legacy_keychain_service" ]; then
+    if ! "$security_bin" delete-generic-password -s "$keychain_service" -a "$keychain_account" >/dev/null 2>&1; then
+      printf '%s\n' 'Legacy Keychain removal failed; installation metadata was preserved' >&2
+      exit 1
+    fi
+  elif ! "$osascript_bin" -l JavaScript "$keychain_helper" delete "$keychain_service" "$keychain_account" >/dev/null 2>&1; then
+    printf '%s\n' 'Keychain removal failed; installation metadata was preserved' >&2
+    exit 1
+  fi
 fi
 rm -rf "$install_root"
 printf '%s\n' '{"uninstalled":true,"alreadyAbsent":false}'

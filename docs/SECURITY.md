@@ -46,7 +46,7 @@ before private storage. SVG and remote image URLs are rejected.
 
 - `BLOB_READ_WRITE_TOKEN` is managed by Vercel for private Blob access.
 
-Never put these values in Git, screenshots, query examples, logs, or support messages. Windows stores the ingest token in a per-user ACL-restricted config file. macOS stores it as the project-owned `KindleLLMDashboard.ingest` generic password in the user's Keychain. Scheduled tasks and LaunchAgents receive only a config path; config on macOS records the Keychain source, not the value.
+Never put these values in Git, screenshots, query examples, logs, or support messages. Windows stores the ingest token in a per-user ACL-restricted config file. macOS stores it as the project-owned `KindleLLMDashboard.ingest.v2` generic password in the user's Keychain. Scheduled tasks and LaunchAgents receive only a config path; config on macOS records the Keychain source, not the value.
 
 All computers enrolled to one dashboard may share the ingest token. Losing a computer requires rotating `DASHBOARD_INGEST_TOKEN` in Vercel and reinstalling or updating the remaining collectors. A changed view token also requires updating the private Kindle URL.
 

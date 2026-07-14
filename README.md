@@ -67,7 +67,10 @@ Diagnostics and removal:
 
 See [Windows collector](docs/WINDOWS-COLLECTOR.md) for installation, recovery, token rotation, and uninstall details.
 
-## macOS Collector
+## macOS Collector (Beta)
+
+The macOS path remains Beta pending a complete real-Mac install, rollback,
+LaunchAgent, and uninstall acceptance run.
 
 Install from Terminal after signing in to the official clients:
 

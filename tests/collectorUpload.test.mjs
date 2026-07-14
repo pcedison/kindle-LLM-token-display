@@ -316,7 +316,7 @@ test('uses a safe per-user default config location', () => {
 test('resolves the project-owned macOS Keychain secret without mutating config', async () => {
   const config = {
     ingestTokenSource: 'macos-keychain',
-    keychainService: 'KindleLLMDashboard.ingest',
+    keychainService: 'KindleLLMDashboard.ingest.v2',
     keychainAccount: 'fixture-user',
   };
   let invocation;
@@ -329,9 +329,34 @@ test('resolves the project-owned macOS Keychain secret without mutating config',
   });
 
   assert.equal(token, 'fixture-secret');
-  assert.deepEqual(invocation, [
-    '/usr/bin/security',
-    ['find-generic-password', '-w', '-s', 'KindleLLMDashboard.ingest', '-a', 'fixture-user'],
+  assert.equal(invocation[0], '/usr/bin/osascript');
+  assert.deepEqual(invocation[1].slice(0, 2), ['-l', 'JavaScript']);
+  assert.match(invocation[1][2], /macos-keychain\.js$/);
+  assert.deepEqual(invocation[1].slice(3), [
+    'read',
+    'KindleLLMDashboard.ingest.v2',
+    'fixture-user',
   ]);
+  assert.doesNotMatch(invocation.flat(Infinity).join(' '), /fixture-secret/);
   assert.equal(Object.hasOwn(config, 'ingestToken'), false);
+});
+
+test('bounds the macOS Keychain helper output after removing osascript framing', async () => {
+  const config = {
+    ingestTokenSource: 'macos-keychain',
+    keychainService: 'KindleLLMDashboard.ingest.v2',
+    keychainAccount: 'fixture-user',
+  };
+  for (const terminator of ['\n', '\r\n']) {
+    const exact = await resolveIngestToken(config, {
+      platform: 'darwin',
+      execFile: async () => ({ stdout: `${'x'.repeat(16384)}${terminator}` }),
+    });
+    assert.equal(exact.length, 16384);
+  }
+
+  await assert.rejects(() => resolveIngestToken(config, {
+    platform: 'darwin',
+    execFile: async () => ({ stdout: `${'x'.repeat(16385)}\n` }),
+  }), /credential is unavailable/i);
 });

@@ -128,7 +128,8 @@ user signs in through official Claude Code and Codex clients instead.
 - Added install, diagnose, and uninstall scripts with executable Git modes.
 - Runtime lives in `~/Library/Application Support/KindleLLMDashboard`.
 - The ingest token lives in the current user's Keychain as the project-owned
-  `KindleLLMDashboard.ingest` generic password.
+  `KindleLLMDashboard.ingest.v2` generic password. The installer removes the
+  legacy `KindleLLMDashboard.ingest` item only after v2 read-back succeeds.
 - Config, manifest, and LaunchAgent contain no ingest token.
 - LaunchAgent uses `RunAtLoad=true`, `StartInterval=720`, `KeepAlive=false`.
 - Foreign status lines and LaunchAgents are protected by default.
