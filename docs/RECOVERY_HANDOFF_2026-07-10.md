@@ -234,9 +234,6 @@ fecb030 Mark Claude collector review complete
 
 Do not commit these untracked diagnostics:
 
-- `docs/superpowers/*-red.txt`
-- `docs/superpowers/task-*-review.diff`
-- `docs/superpowers/task-5-review.md`
 - `node_modules.junction.backup/`
 - `node_modules.partial.junction.20260710115202/`
 
@@ -526,14 +523,14 @@ Then read, in order:
 
 1. `docs/RECOVERY_HANDOFF_2026-07-10.md`
 2. `README.md`
-3. `docs/superpowers/specs/2026-07-10-live-quota-dashboard-design.md`
-4. `docs/superpowers/plans/2026-07-10-live-quota-dashboard.md`
-5. `docs/SECURITY.md`
-6. `docs/WINDOWS-COLLECTOR.md`
+3. `docs/ARCHITECTURE.md`
+4. `docs/SECURITY.md`
+5. `docs/WINDOWS-COLLECTOR.md`
 
-Do not redo Tasks 1-7 unless fresh evidence finds a regression. Resume at the
-first unchecked Task 8 item. Before each push or merge, record local commit,
-GitHub branch/PR SHA, check status, and Vercel production SHA separately.
+Do not replay the historical task sequence unless fresh evidence finds a
+regression. Use `PROJECT_STATUS.md` and `docs/SCOPE-RESET.md` for current work.
+Before each push or merge, record local commit, GitHub branch/PR SHA, check
+status, and Vercel production SHA separately.
 
 ## Release Decision
 
