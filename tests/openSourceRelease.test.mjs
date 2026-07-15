@@ -159,15 +159,16 @@ test('public docs require fail-closed view protection and isolate local fixtures
   assert.doesNotMatch(readme, /https:\/\/[^/\s]+\.vercel\.app/);
 });
 
-test('README links setup, security, architecture, collector, RTC, and preview', () => {
+test('README links setup, security, architecture, collectors, and preview', () => {
   const readme = read('README.md');
   const windowsCollector = read('docs/WINDOWS-COLLECTOR.md');
   for (const link of [
     'docs/VERCEL-SETUP.md', 'docs/WINDOWS-COLLECTOR.md', 'docs/MACOS-COLLECTOR.md', 'docs/SECURITY.md',
-    'docs/ARCHITECTURE.md', 'docs/superpowers/specs/2026-07-10-kindle-battery-low-power-design.md',
-    'docs/images/dashboard-dp75sdi.png',
+    'docs/ARCHITECTURE.md', 'docs/images/dashboard-dp75sdi.png',
   ]) assert.ok(readme.includes(link), link);
   assert.match(readme, /actions\/workflows\/ci\.yml\/badge\.svg/);
+  assert.match(readme, /Low Power Test \(60 sec\)/);
+  assert.match(readme, /logs\/low-power-test\.log/);
   assert.match(readme, /Kindle LLM Quota Uploader-<GUID>/);
   assert.match(windowsCollector, /manifest-owned GUID task/);
   assert.ok(existsSync(new URL('../docs/images/dashboard-dp75sdi.png', import.meta.url)));

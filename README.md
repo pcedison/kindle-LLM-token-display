@@ -111,7 +111,7 @@ Safely eject the Kindle and use KUAL in this order:
 2. `Display Cached Dashboard`
 3. `Start LLM Token Dashboard`
 
-The proven DP75SDI path keeps the Kindle framework running and does not clear the panel before `eips`. Leave `DASHBOARD_USE_RTC=false` until the 60-second probe records `WAKE_SUCCESS`. The staged RTC procedure is documented in the [DP75SDI battery and low-power design](docs/superpowers/specs/2026-07-10-kindle-battery-low-power-design.md).
+The proven DP75SDI path keeps the Kindle framework running and does not clear the panel before `eips`. Leave `DASHBOARD_USE_RTC=false` until `Low Power Test (60 sec)` records `WAKE_SUCCESS` in `logs/low-power-test.log`.
 
 `Start LLM Token Dashboard` hides Pillow and pauses the `awesome` window manager after KUAL closes so the native Wi-Fi, battery, and clock bar cannot redraw over the PNG. Press the physical power button once to exit dashboard mode; if the native sleep screen appears, press it again to return to Kindle. `Stop Dashboard / Restore Kindle`, normal daemon exit, and termination also restore system chrome without stopping the Kindle framework.
 
