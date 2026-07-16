@@ -11,7 +11,14 @@ mkdir -p "$DIR/logs"
 [ -f "$ENV_FILE" ] && . "$ENV_FILE"
 . "$DIR/local/chrome-control.sh"
 
-sleep "${KUAL_SETTLE_DELAY_SECS:-3}"
+kual_settle_delay=${KUAL_SETTLE_DELAY_SECS:-8}
+case "$kual_settle_delay" in
+  ''|*[!0-9]*) kual_settle_delay=8 ;;
+esac
+if [ "$kual_settle_delay" -lt 8 ]; then
+  kual_settle_delay=8
+fi
+sleep "$kual_settle_delay"
 hide_kindle_pillow
 
 echo "$(date) display-once: preparing dashboard display" >>"$LOG_FILE"

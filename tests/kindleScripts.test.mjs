@@ -368,20 +368,37 @@ test('ships the diagnostic and low-power probe actions without enabling RTC by d
   assert.match(env, /DASHBOARD_USE_RTC=.*false/);
 });
 
-test('queues the cached dashboard draw after the KUAL action returns', () => {
+test('queues one-shot draws after the KUAL action returns', () => {
   const menu = JSON.parse(
     readFileSync(join(process.cwd(), 'kindle-extension', 'menu.json'), 'utf8'),
   );
   const cachedItem = menu.items.find((item) => item.name === 'Display Cached Dashboard');
   assert.equal(cachedItem?.action, './display-cached.sh');
+  const testItem = menu.items.find((item) => item.name === 'Display Test Frame');
+  assert.equal(testItem?.action, './local/display-test-frame.sh');
 
-  const launcher = readFileSync(
+  for (const path of [
     join(process.cwd(), 'kindle-extension', 'display-cached.sh'),
+    join(process.cwd(), 'kindle-extension', 'local', 'display-test-frame.sh'),
+  ]) {
+    const launcher = readFileSync(path, 'utf8');
+    assert.match(launcher, /display-once\.sh/);
+    assert.match(launcher, /nohup/);
+    assert.match(launcher, /&/);
+  }
+
+  const env = readFileSync(
+    join(process.cwd(), 'kindle-extension', 'local', 'env.sh'),
     'utf8',
   );
-  assert.match(launcher, /local\/display-once\.sh/);
-  assert.match(launcher, /nohup/);
-  assert.match(launcher, /&/);
+  assert.match(env, /KUAL_SETTLE_DELAY_SECS=\$\{KUAL_SETTLE_DELAY_SECS:-8\}/);
+
+  const displayOnce = readFileSync(
+    join(process.cwd(), 'kindle-extension', 'local', 'display-once.sh'),
+    'utf8',
+  );
+  assert.match(displayOnce, /kual_settle_delay=\$\{KUAL_SETTLE_DELAY_SECS:-8\}/);
+  assert.match(displayOnce, /kual_settle_delay" -lt 8/);
 });
 
 test('hides and restores Kindle system chrome with reversible commands', () => {
