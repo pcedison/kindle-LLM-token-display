@@ -7,14 +7,10 @@ PID_FILE="$DIR/logs/dash.pid"
 . "$DIR/local/chrome-control.sh"
 . "$DIR/local/dashboard-utils.sh"
 
-if [ -r "$PID_FILE" ]; then
-  dashboard_pid=$(cat "$PID_FILE" 2>/dev/null)
-  signal_owned_process "$dashboard_pid" "extensions/kindle-dash/dash.sh" TERM "$DIR" >/dev/null 2>&1 ||
-    signal_owned_process "$dashboard_pid" "./dash.sh" TERM "$DIR" >/dev/null 2>&1 || true
+if ! terminate_all_dashboard_processes "$DIR"; then
+  echo "Kindle dashboard could not be stopped; native UI was not restored." >&2
+  exit 1
 fi
-
-pkill -f "/mnt/us/extensions/kindle-dash/dash.sh" >/dev/null 2>&1 || true
-pkill -f "extensions/kindle-dash/dash.sh" >/dev/null 2>&1 || true
 rm -f "$PID_FILE"
 
 restore_kindle_chrome
