@@ -44,19 +44,39 @@ dashboard_cleanup_started=false
 power_button_watcher_pid=""
 
 stop_power_button_exit_watcher() {
-  signal_owned_process "$power_button_watcher_pid" power-button-exit.sh TERM >/dev/null 2>&1 || true
-
-  if [ -r "$POWER_BUTTON_EVENT_PID_FILE" ]; then
-    event_pid=$(cat "$POWER_BUTTON_EVENT_PID_FILE" 2>/dev/null)
-    signal_owned_process "$event_pid" lipc-wait-event KILL >/dev/null 2>&1 || true
+  watcher_pid_to_cleanup=$power_button_watcher_pid
+  if owned_process_matches "$watcher_pid_to_cleanup" power-button-exit.sh "$DIR"; then
+    signal_owned_process "$watcher_pid_to_cleanup" power-button-exit.sh TERM "$DIR" >/dev/null 2>&1 || true
+    if ! wait_for_owned_process_exit "$watcher_pid_to_cleanup" power-button-exit.sh "$DIR" 3; then
+      if [ -r "$POWER_BUTTON_EVENT_PID_FILE" ]; then
+        while IFS=' ' read -r event_pid event_process; do
+          [ -n "$event_pid" ] || continue
+          case "$event_process" in
+            lipc-wait-event|tail|power-button-exit.sh)
+              signal_owned_child_process "$event_pid" "$watcher_pid_to_cleanup" "$event_process" TERM "$DIR" >/dev/null 2>&1 || true
+              ;;
+          esac
+        done <"$POWER_BUTTON_EVENT_PID_FILE"
+        sleep 1
+        while IFS=' ' read -r event_pid event_process; do
+          [ -n "$event_pid" ] || continue
+          case "$event_process" in
+            lipc-wait-event|tail|power-button-exit.sh)
+              signal_owned_child_process "$event_pid" "$watcher_pid_to_cleanup" "$event_process" KILL "$DIR" >/dev/null 2>&1 || true
+              ;;
+          esac
+        done <"$POWER_BUTTON_EVENT_PID_FILE"
+      fi
+      signal_owned_process "$watcher_pid_to_cleanup" power-button-exit.sh KILL "$DIR" >/dev/null 2>&1 || true
+      wait_for_owned_process_exit "$watcher_pid_to_cleanup" power-button-exit.sh "$DIR" 2 >/dev/null 2>&1 || true
+    fi
   fi
 
-  signal_owned_process "$power_button_watcher_pid" power-button-exit.sh KILL >/dev/null 2>&1 || true
-
-  if [ -n "$power_button_watcher_pid" ]; then
-    rm -f "/tmp/kindle-dash-power-$power_button_watcher_pid"
-  fi
   rm -f "$POWER_BUTTON_EVENT_PID_FILE"
+  if [ -n "$watcher_pid_to_cleanup" ]; then
+    rm -f "/tmp/kindle-dash-power-$watcher_pid_to_cleanup"
+  fi
+  power_button_watcher_pid=""
 }
 
 dashboard_cleanup() {
@@ -84,15 +104,31 @@ start_power_button_exit_watcher() {
     return 0
   fi
 
-  if ! command -v lipc-wait-event >/dev/null 2>&1; then
-    echo "Physical power-button restore unavailable: lipc-wait-event not found."
+  power_button_log=${POWER_BUTTON_LOG_PATH:-/var/log/messages}
+  if { [ ! -r "$power_button_log" ] || ! command -v tail >/dev/null 2>&1; } &&
+     ! command -v lipc-wait-event >/dev/null 2>&1; then
+    echo "Physical power-button restore unavailable: no event source found."
     return 0
   fi
 
   rm -f "$POWER_BUTTON_EVENT_PID_FILE"
   "$POWER_BUTTON_EXIT_CMD" "$DIR/stop.sh" "$POWER_BUTTON_EVENT_PID_FILE" &
   power_button_watcher_pid=$!
-  echo "Physical power-button restore watcher started."
+  watcher_ready_wait=0
+  while [ ! -s "$POWER_BUTTON_EVENT_PID_FILE" ] && [ "$watcher_ready_wait" -lt 3 ]; do
+    sleep 1
+    watcher_ready_wait=$((watcher_ready_wait + 1))
+  done
+
+  if [ -s "$POWER_BUTTON_EVENT_PID_FILE" ] &&
+     owned_process_matches "$power_button_watcher_pid" power-button-exit.sh "$DIR"; then
+    echo "Physical power-button restore watcher ready."
+    return 0
+  fi
+
+  echo "Physical power-button restore watcher failed to become ready."
+  stop_power_button_exit_watcher
+  power_button_watcher_pid=""
 }
 
 init() {

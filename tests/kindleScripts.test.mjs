@@ -489,8 +489,16 @@ test('dashboard lifecycle always restores Kindle system chrome', () => {
   assert.doesNotMatch(stop, /env\.sh/);
   assert.match(start, /"\$DIR\/dash\.sh"/);
   assert.doesNotMatch(start, /nohup \.\/dash\.sh/);
+  assert.match(start, /dashboard_pid=\$!/);
+  assert.doesNotMatch(start, /nohup[^\n]+& echo \$!/);
+  assert.match(start, /cleanup_failed_start/);
+  assert.doesNotMatch(start, /\bpkill\b/);
   assert.match(stop, /logs\/dash\.pid/);
-  assert.match(stop, /signal_owned_process/);
+  assert.match(stop, /terminate_all_dashboard_processes/);
+  assert.doesNotMatch(stop, /\bpkill\b/);
+  const terminateIndex = stop.indexOf('terminate_all_dashboard_processes');
+  assert.ok(terminateIndex >= 0);
+  assert.ok(terminateIndex < stop.indexOf('restore_kindle_chrome'));
 });
 
 test('re-hides full chrome for daemon draws and only Pillow for one-shot draws', () => {
@@ -567,7 +575,7 @@ test('physical power-button event exits dashboard mode without matching RTC wake
       shell,
       [
         shellFlag,
-        `chmod +x "$PWD/${fixture}/lipc-wait-event" "$PWD/${fixture}/stop-dashboard"; PATH="$PWD/${fixture}:$PATH" CAPTURE="$PWD/${fixture}/stop.log" DASHBOARD_EVENT_FIFO="$PWD/${fixture}/events.fifo" ./kindle-extension/local/power-button-exit.sh "$PWD/${fixture}/stop-dashboard" "$PWD/${fixture}/event.pid"`,
+        `chmod +x "$PWD/${fixture}/lipc-wait-event" "$PWD/${fixture}/stop-dashboard"; PATH="$PWD/${fixture}:$PATH" POWER_BUTTON_LOG_PATH="$PWD/${fixture}/missing-messages" CAPTURE="$PWD/${fixture}/stop.log" DASHBOARD_EVENT_FIFO="$PWD/${fixture}/events.fifo" ./kindle-extension/local/power-button-exit.sh "$PWD/${fixture}/stop-dashboard" "$PWD/${fixture}/event.pid"`,
       ],
       { cwd: process.cwd(), encoding: 'utf8' },
     );
@@ -586,7 +594,7 @@ test('physical power-button event exits dashboard mode without matching RTC wake
       shell,
       [
         shellFlag,
-        `PATH="$PWD/${fixture}:$PATH" CAPTURE="$PWD/${fixture}/stop.log" DASHBOARD_EVENT_FIFO="$PWD/${fixture}/events.fifo" ./kindle-extension/local/power-button-exit.sh "$PWD/${fixture}/stop-dashboard" "$PWD/${fixture}/event.pid"`,
+        `PATH="$PWD/${fixture}:$PATH" POWER_BUTTON_LOG_PATH="$PWD/${fixture}/missing-messages" CAPTURE="$PWD/${fixture}/stop.log" DASHBOARD_EVENT_FIFO="$PWD/${fixture}/events.fifo" ./kindle-extension/local/power-button-exit.sh "$PWD/${fixture}/stop-dashboard" "$PWD/${fixture}/event.pid"`,
       ],
       { cwd: process.cwd(), encoding: 'utf8' },
     );
@@ -600,7 +608,228 @@ test('physical power-button event exits dashboard mode without matching RTC wake
       join(process.cwd(), 'kindle-extension', 'local', 'power-button-exit.sh'),
       'utf8',
     );
-    assert.match(watcher, /kill -KILL "\$EVENT_PID"/);
+    assert.match(watcher, /com\.lab126\.powerd[\s\\]+\n\s*goingToScreenSaver,outOfScreenSaver/);
+    assert.match(watcher, /signal_owned_child_process/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('terminates an owned process and waits for its proc entry to disappear', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-process-terminate-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const capture = join(directory, 'signals.log');
+
+  mkdirSync(join(directory, 'proc', '4242'), { recursive: true });
+  writeFileSync(
+    join(directory, 'proc', '4242', 'cmdline'),
+    '/bin/sh\0/mnt/us/extensions/kindle-dash/dash.sh\0',
+  );
+  writeFileSync(
+    join(directory, 'signal-process'),
+    '#!/usr/bin/env sh\nprintf \'%s\\n\' "$*" >> "$CAPTURE"\nrm -f "$PROCESS_PROC_ROOT/$2/cmdline"\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `chmod +x "$PWD/${fixture}/signal-process"; export PROCESS_PROC_ROOT="$PWD/${fixture}/proc"; export PROCESS_SIGNAL_CMD="$PWD/${fixture}/signal-process"; export CAPTURE="$PWD/${fixture}/signals.log"; . ./kindle-extension/local/dashboard-utils.sh; terminate_owned_process 4242 'extensions/kindle-dash/dash.sh' || exit 1`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(capture, 'utf8').trim(), '-TERM 4242');
+    assert.equal(existsSync(join(directory, 'proc', '4242', 'cmdline')), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('signals an event source only while it is still owned by the watcher', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-child-owner-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const capture = join(directory, 'signals.log');
+
+  mkdirSync(join(directory, 'proc', '4242'), { recursive: true });
+  writeFileSync(join(directory, 'proc', '4242', 'cmdline'), '/usr/bin/tail\0-n\0' + '0\0-F\0');
+  writeFileSync(join(directory, 'proc', '4242', 'status'), 'Name:\ttail\nPPid:\t111\n');
+  writeFileSync(
+    join(directory, 'signal-process'),
+    '#!/usr/bin/env sh\nprintf \'%s\\n\' "$*" >> "$CAPTURE"\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `chmod +x "$PWD/${fixture}/signal-process"; export PROCESS_PROC_ROOT="$PWD/${fixture}/proc"; export PROCESS_SIGNAL_CMD="$PWD/${fixture}/signal-process"; export CAPTURE="$PWD/${fixture}/signals.log"; . ./kindle-extension/local/dashboard-utils.sh; signal_owned_child_process 4242 111 tail TERM || exit 1; if signal_owned_child_process 4242 222 tail KILL; then exit 2; fi`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(capture, 'utf8').trim(), '-TERM 4242');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('refuses to report all dashboard processes stopped when TERM and KILL fail', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-process-stuck-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const capture = join(directory, 'signals.log');
+
+  mkdirSync(join(directory, 'proc', '4242'), { recursive: true });
+  writeFileSync(
+    join(directory, 'proc', '4242', 'cmdline'),
+    '/bin/sh\0/mnt/us/extensions/kindle-dash/dash.sh\0',
+  );
+  writeFileSync(
+    join(directory, 'signal-process'),
+    '#!/usr/bin/env sh\nprintf \'%s\\n\' "$*" >> "$CAPTURE"\n',
+  );
+  writeFileSync(join(directory, 'sleep'), '#!/usr/bin/env sh\nexit 0\n');
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `chmod +x "$PWD/${fixture}/signal-process" "$PWD/${fixture}/sleep"; export PATH="$PWD/${fixture}:$PATH"; export PROCESS_PROC_ROOT="$PWD/${fixture}/proc"; export PROCESS_SIGNAL_CMD="$PWD/${fixture}/signal-process"; export CAPTURE="$PWD/${fixture}/signals.log"; . ./kindle-extension/local/dashboard-utils.sh; if terminate_all_owned_processes 'extensions/kindle-dash/dash.sh'; then exit 2; fi`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(readFileSync(capture, 'utf8').trim().split('\n'), [
+      '-TERM 4242',
+      '-KILL 4242',
+    ]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('stops both current and legacy relative dashboard daemons during upgrades', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-dashboard-migration-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const capture = join(directory, 'signals.log');
+
+  for (const pid of ['4242', '5252', '6262']) {
+    mkdirSync(join(directory, 'proc', pid), { recursive: true });
+  }
+  writeFileSync(
+    join(directory, 'proc', '4242', 'cmdline'),
+    '/bin/sh\0/mnt/us/extensions/kindle-dash/dash.sh\0',
+  );
+  writeFileSync(join(directory, 'proc', '5252', 'cmdline'), '/bin/sh\0./dash.sh\0');
+  writeFileSync(join(directory, 'proc', '6262', 'cmdline'), '/bin/sh\0./dash.sh\0');
+  writeFileSync(
+    join(directory, 'readlink'),
+    '#!/usr/bin/env sh\ncase "$1" in */6262/cwd) printf \'/mnt/us/extensions/other\\n\' ;; *) printf \'%s\\n\' "$EXPECTED_CWD" ;; esac\n',
+  );
+  writeFileSync(
+    join(directory, 'signal-process'),
+    '#!/usr/bin/env sh\nprintf \'%s\\n\' "$*" >> "$CAPTURE"\nrm -f "$PROCESS_PROC_ROOT/$2/cmdline"\n',
+  );
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `chmod +x "$PWD/${fixture}/readlink" "$PWD/${fixture}/signal-process"; export PATH="$PWD/${fixture}:$PATH"; export PROCESS_PROC_ROOT="$PWD/${fixture}/proc"; export PROCESS_SIGNAL_CMD="$PWD/${fixture}/signal-process"; export CAPTURE="$PWD/${fixture}/signals.log"; export EXPECTED_CWD='/mnt/us/extensions/kindle-dash'; . ./kindle-extension/local/dashboard-utils.sh; terminate_all_dashboard_processes "$EXPECTED_CWD" || exit 1`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(readFileSync(capture, 'utf8').trim().split('\n'), [
+      '-TERM 4242',
+      '-TERM 5252',
+    ]);
+    assert.equal(existsSync(join(directory, 'proc', '6262', 'cmdline')), true);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('raw powerd log press exits while screen-saver transitions are suppressed', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-raw-power-exit-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const capture = join(directory, 'stop.log');
+  const messages = join(directory, 'messages');
+
+  writeFileSync(
+    join(directory, 'lipc-wait-event'),
+    '#!/usr/bin/env sh\nexit 0\n',
+  );
+  writeFileSync(
+    join(directory, 'tail'),
+    '#!/usr/bin/env sh\ncase "$1" in --help) printf \'Usage: tail [-F]\\n\' ;; *) printf \'260716:122609 powerd[2027]: I def:pbpress:time=1:Power button pressed\\n\' ;; esac\n',
+  );
+  writeFileSync(
+    join(directory, 'stop-dashboard'),
+    '#!/usr/bin/env sh\nprintf \'stopped\\n\' >> "$CAPTURE"\n',
+  );
+  writeFileSync(messages, 'existing log content\n');
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `chmod +x "$PWD/${fixture}/lipc-wait-event" "$PWD/${fixture}/tail" "$PWD/${fixture}/stop-dashboard"; PATH="$PWD/${fixture}:$PATH" POWER_BUTTON_LOG_PATH="$PWD/${fixture}/messages" CAPTURE="$PWD/${fixture}/stop.log" DASHBOARD_EVENT_FIFO="$PWD/${fixture}/events.fifo" ./kindle-extension/local/power-button-exit.sh "$PWD/${fixture}/stop-dashboard" "$PWD/${fixture}/event.pid"`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /hardware-log and screen-saver watchers ready/);
+    assert.match(result.stdout, /restoring Kindle UI after physical power button/);
+    assert.equal(readFileSync(capture, 'utf8').trim(), 'stopped');
+    assert.equal(existsSync(join(directory, 'event.pid')), false);
+    assert.equal(existsSync(join(directory, 'events.fifo')), false);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test('uses rotation-aware polling when the device tail lacks follow-by-name', () => {
+  const directory = mkdtempSync(join(process.cwd(), '.kindle-power-log-poll-'));
+  const fixture = relative(process.cwd(), directory).replaceAll('\\', '/');
+  const capture = join(directory, 'stop.log');
+  const messages = join(directory, 'messages');
+
+  writeFileSync(
+    join(directory, 'tail'),
+    '#!/usr/bin/env sh\nif [ "$1" = --help ]; then printf \'Usage: tail [-f]\\n\'; exit 0; fi\nif [ ! -e "$TAIL_COUNT" ]; then : > "$TAIL_COUNT"; printf \'powerd: def:pbpress:time=1:Power button pressed\\n\'; else printf \'powerd: def:pbpress:time=2:Power button pressed\\n\'; fi\n',
+  );
+  writeFileSync(join(directory, 'sleep'), '#!/usr/bin/env sh\nexit 0\n');
+  writeFileSync(
+    join(directory, 'stop-dashboard'),
+    '#!/usr/bin/env sh\nprintf \'stopped\\n\' >> "$CAPTURE"\n',
+  );
+  writeFileSync(messages, 'existing log content\n');
+
+  try {
+    const result = spawnSync(
+      shell,
+      [
+        shellFlag,
+        `chmod +x "$PWD/${fixture}/tail" "$PWD/${fixture}/sleep" "$PWD/${fixture}/stop-dashboard"; PATH="$PWD/${fixture}:$PATH" POWER_BUTTON_LOG_PATH="$PWD/${fixture}/messages" TAIL_COUNT="$PWD/${fixture}/tail.count" CAPTURE="$PWD/${fixture}/stop.log" DASHBOARD_EVENT_FIFO="$PWD/${fixture}/events.fifo" ./kindle-extension/local/power-button-exit.sh "$PWD/${fixture}/stop-dashboard" "$PWD/${fixture}/event.pid"`,
+      ],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /tail -F unavailable; rotation-aware polling enabled/);
+    assert.match(result.stdout, /restoring Kindle UI after physical power button/);
+    assert.equal(readFileSync(capture, 'utf8').trim(), 'stopped');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

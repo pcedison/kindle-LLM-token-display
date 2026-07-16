@@ -166,6 +166,67 @@ process_cwd_matches() {
   [ "$owned_actual_cwd" = "$owned_expected_cwd" ]
 }
 
+owned_process_matches() {
+  process_cmdline_contains "$1" "$2" || return 1
+  process_cwd_matches "$1" "${3:-}"
+}
+
+process_parent_pid_matches() {
+  child_process_pid=${1:-}
+  expected_parent_pid=${2:-}
+  child_proc_root=${PROCESS_PROC_ROOT:-/proc}
+
+  case "$child_process_pid:$expected_parent_pid" in
+    *[!0-9:]*|:*|*:) return 1 ;;
+  esac
+
+  [ -r "$child_proc_root/$child_process_pid/status" ] || return 1
+  actual_parent_pid=$(sed -n 's/^PPid:[[:space:]]*//p' "$child_proc_root/$child_process_pid/status" 2>/dev/null)
+  [ "$actual_parent_pid" = "$expected_parent_pid" ]
+}
+
+signal_owned_child_process() {
+  child_process_pid=${1:-}
+  child_parent_pid=${2:-}
+  child_process_name=${3:-}
+  child_signal=${4:-TERM}
+  child_expected_cwd=${5:-}
+
+  process_parent_pid_matches "$child_process_pid" "$child_parent_pid" || return 1
+  signal_owned_process "$child_process_pid" "$child_process_name" "$child_signal" "$child_expected_cwd"
+}
+
+owned_process_pids() {
+  owned_list_name=${1:-}
+  owned_list_cwd=${2:-}
+  owned_list_root=${PROCESS_PROC_ROOT:-/proc}
+
+  [ -n "$owned_list_name" ] || return 1
+  for owned_list_path in "$owned_list_root"/[0-9]*; do
+    [ -d "$owned_list_path" ] || continue
+    owned_list_pid=${owned_list_path##*/}
+    if owned_process_matches "$owned_list_pid" "$owned_list_name" "$owned_list_cwd"; then
+      printf '%s\n' "$owned_list_pid"
+    fi
+  done
+}
+
+wait_for_no_owned_processes() {
+  wait_list_name=${1:-}
+  wait_list_cwd=${2:-}
+  wait_list_seconds=${3:-3}
+
+  case "$wait_list_seconds" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+
+  while [ -n "$(owned_process_pids "$wait_list_name" "$wait_list_cwd")" ]; do
+    [ "$wait_list_seconds" -gt 0 ] 2>/dev/null || return 1
+    sleep 1
+    wait_list_seconds=$((wait_list_seconds - 1))
+  done
+}
+
 signal_owned_process() {
   owned_process_pid=${1:-}
   owned_process_name=${2:-}
@@ -181,4 +242,107 @@ signal_owned_process() {
   process_cmdline_contains "$owned_process_pid" "$owned_process_name" || return 1
   process_cwd_matches "$owned_process_pid" "$owned_expected_cwd" || return 1
   "$owned_signal_cmd" "-$owned_signal" "$owned_process_pid"
+}
+
+wait_for_owned_process_exit() {
+  wait_process_pid=${1:-}
+  wait_process_name=${2:-}
+  wait_process_cwd=${3:-}
+  wait_process_seconds=${4:-3}
+
+  case "$wait_process_seconds" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+
+  while owned_process_matches "$wait_process_pid" "$wait_process_name" "$wait_process_cwd"; do
+    [ "$wait_process_seconds" -gt 0 ] 2>/dev/null || return 1
+    sleep 1
+    wait_process_seconds=$((wait_process_seconds - 1))
+  done
+}
+
+terminate_owned_process() {
+  terminate_process_pid=${1:-}
+  terminate_process_name=${2:-}
+  terminate_process_cwd=${3:-}
+
+  owned_process_matches "$terminate_process_pid" "$terminate_process_name" "$terminate_process_cwd" || return 1
+  signal_owned_process "$terminate_process_pid" "$terminate_process_name" TERM "$terminate_process_cwd" || return 1
+  if wait_for_owned_process_exit "$terminate_process_pid" "$terminate_process_name" "$terminate_process_cwd" 3; then
+    return 0
+  fi
+
+  signal_owned_process "$terminate_process_pid" "$terminate_process_name" KILL "$terminate_process_cwd" || return 1
+  wait_for_owned_process_exit "$terminate_process_pid" "$terminate_process_name" "$terminate_process_cwd" 2
+}
+
+terminate_all_owned_processes() {
+  terminate_list_name=${1:-}
+  terminate_list_cwd=${2:-}
+  terminate_list_pids=$(owned_process_pids "$terminate_list_name" "$terminate_list_cwd")
+
+  [ -n "$terminate_list_pids" ] || return 0
+  for terminate_list_pid in $terminate_list_pids; do
+    signal_owned_process "$terminate_list_pid" "$terminate_list_name" TERM "$terminate_list_cwd" >/dev/null 2>&1 || true
+  done
+  if wait_for_no_owned_processes "$terminate_list_name" "$terminate_list_cwd" 3; then
+    return 0
+  fi
+
+  terminate_list_pids=$(owned_process_pids "$terminate_list_name" "$terminate_list_cwd")
+  for terminate_list_pid in $terminate_list_pids; do
+    signal_owned_process "$terminate_list_pid" "$terminate_list_name" KILL "$terminate_list_cwd" >/dev/null 2>&1 || true
+  done
+  wait_for_no_owned_processes "$terminate_list_name" "$terminate_list_cwd" 2
+}
+
+dashboard_process_pids() {
+  dashboard_scan_cwd=${1:-}
+
+  [ -n "$dashboard_scan_cwd" ] || return 1
+  owned_process_pids "extensions/kindle-dash/dash.sh" "$dashboard_scan_cwd"
+  owned_process_pids "./dash.sh" "$dashboard_scan_cwd"
+}
+
+signal_owned_dashboard_process() {
+  dashboard_signal_pid=${1:-}
+  dashboard_signal_cwd=${2:-}
+  dashboard_signal=${3:-TERM}
+
+  signal_owned_process "$dashboard_signal_pid" "extensions/kindle-dash/dash.sh" "$dashboard_signal" "$dashboard_signal_cwd" ||
+    signal_owned_process "$dashboard_signal_pid" "./dash.sh" "$dashboard_signal" "$dashboard_signal_cwd"
+}
+
+wait_for_no_dashboard_processes() {
+  dashboard_wait_cwd=${1:-}
+  dashboard_wait_seconds=${2:-3}
+
+  case "$dashboard_wait_seconds" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+
+  while [ -n "$(dashboard_process_pids "$dashboard_wait_cwd")" ]; do
+    [ "$dashboard_wait_seconds" -gt 0 ] 2>/dev/null || return 1
+    sleep 1
+    dashboard_wait_seconds=$((dashboard_wait_seconds - 1))
+  done
+}
+
+terminate_all_dashboard_processes() {
+  dashboard_terminate_cwd=${1:-}
+  dashboard_terminate_pids=$(dashboard_process_pids "$dashboard_terminate_cwd")
+
+  [ -n "$dashboard_terminate_pids" ] || return 0
+  for dashboard_terminate_pid in $dashboard_terminate_pids; do
+    signal_owned_dashboard_process "$dashboard_terminate_pid" "$dashboard_terminate_cwd" TERM >/dev/null 2>&1 || true
+  done
+  if wait_for_no_dashboard_processes "$dashboard_terminate_cwd" 3; then
+    return 0
+  fi
+
+  dashboard_terminate_pids=$(dashboard_process_pids "$dashboard_terminate_cwd")
+  for dashboard_terminate_pid in $dashboard_terminate_pids; do
+    signal_owned_dashboard_process "$dashboard_terminate_pid" "$dashboard_terminate_cwd" KILL >/dev/null 2>&1 || true
+  done
+  wait_for_no_dashboard_processes "$dashboard_terminate_cwd" 2
 }
