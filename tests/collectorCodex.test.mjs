@@ -104,6 +104,29 @@ test('launches Windows command shims through cmd.exe with fixed safe arguments',
   }
 });
 
+test('launches a bare Windows Codex command through cmd.exe so npm shims resolve', async () => {
+  const comspec = 'C:\\Windows\\System32\\cmd.exe';
+  let invocation;
+  await readCodexRateLimits({
+    command: 'codex',
+    platform: 'win32',
+    env: { ComSpec: comspec },
+    spawn(...args) {
+      invocation = args;
+      return successfulChild();
+    },
+    timeoutMs: 1000,
+  });
+
+  assert.equal(invocation[0], comspec);
+  assert.deepEqual(invocation[1], ['/d', '/s', '/c', '""codex" "app-server" "--stdio""']);
+  assert.deepEqual(invocation[2], {
+    shell: false,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsVerbatimArguments: true,
+  });
+});
+
 test('launches ordinary Windows executables directly without a shell', async () => {
   let invocation;
   const command = 'C:\\Program Files\\Codex\\codex.exe';

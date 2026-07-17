@@ -6,7 +6,10 @@ const UNSAFE_CMD_PATTERN = /["\r\n\0&|<>^%!]/;
 
 function codexSpawnSpec(command, platform, env) {
   const options = { shell: false, stdio: ['pipe', 'pipe', 'pipe'] };
-  if (platform !== 'win32' || !/\.(?:cmd|bat)$/i.test(command)) {
+  const windowsCommandShim = platform === 'win32'
+    && ((!/[\\/]/.test(command) && !/\.[A-Za-z0-9]+$/.test(command))
+      || /\.(?:cmd|bat)$/i.test(command));
+  if (!windowsCommandShim) {
     return { command, args: APP_SERVER_ARGS, options };
   }
   if (UNSAFE_CMD_PATTERN.test(command)) throw new TypeError('Unsafe command shim');
